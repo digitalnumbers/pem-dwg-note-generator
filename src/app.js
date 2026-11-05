@@ -3,11 +3,6 @@ import { drawSection, VB_W } from './drawing.js';
 
 const $ = id => document.getElementById(id);
 const form = $('form');
-const SPEC = {
-  insert: 'MS21208 (inactive) replaced by MS122xxx / MS124xxx per NASM33537',
-  nut: 'MIL-N-45938/1 self-clinching nuts (now NASM45938/1)',
-  stud: 'MIL-S-63540/1 flush-head studs (now NASM63540/1)',
-};
 const LEN_LABEL = { insert: 'Insert length', nut: 'Shank length A', stud: 'Stud length L (from head face)' };
 
 let data = null, sources = {}, state = { ...DEFAULT_STATE }, last = null;
@@ -76,7 +71,6 @@ function setVisibility() {
     const f = el.dataset.for;
     el.hidden = !(f === t || (f === 'clinch' && t !== 'insert') || (f === 'insert-blind' && t === 'insert' && state.hole === 'blind'));
   });
-  $('type-spec').textContent = SPEC[t];
   $('len-label').textContent = LEN_LABEL[t];
 }
 
