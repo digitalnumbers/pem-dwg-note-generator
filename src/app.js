@@ -18,8 +18,9 @@ async function init() {
   $('material').innerHTML = MATERIALS.map(m => `<option value="${m}">${m}</option>`).join('');
   $('threads').innerHTML = THREADS.map(t => `<label><input type="radio" name="thread" value="${t}"><span>${t}</span></label>`).join('');
   try {
-    const [inserts, nuts, studs, materials, src] = await Promise.all(['hardware_ms21208.csv', 'hardware_m45938_1.csv', 'hardware_m63540_1.csv', 'materials.csv', 'sources.csv'].map(loadCSV));
-    data = { inserts, nuts, studs, materials };
+    const [inserts, nuts, studs, spNuts, fh4Studs, materials, src] = await Promise.all(['hardware_ms21208.csv', 'hardware_m45938_1.csv', 'hardware_m63540_1.csv', 'hardware_pem_sp.csv', 'hardware_pem_fh4.csv', 'materials.csv', 'sources.csv'].map(loadCSV));
+    // Commercial-only PEM rows (no mil PN) join the same pools; auto-select uses them only when no mil part is rated.
+    data = { inserts, nuts: [...nuts, ...spNuts], studs: [...studs, ...fh4Studs], materials };
     for (const r of src) sources[r.id] = r;
   } catch (e) {
     $('note').textContent = 'Could not load the spec data files. ' + e.message;
@@ -92,7 +93,7 @@ function fillSelects(o) {
   len.value = o.choices.some(c => c.value === state.len) ? state.len : 'auto';
   $('len-hint').textContent = o.choices.length ? `${o.choices.filter(c => c.fits).length} of ${o.choices.length} confirmed lengths fit ${state.thk || '?'} in.` : '';
   const m = data.materials.find(r => r.material === state.material);
-  $('mat-hint').textContent = m ? [m.hardness_HB && `${m.hardness_HB} HB`, /^\d/.test(m.hardness_HRB) && `${m.hardness_HRB} HRB`].filter(Boolean).join(' / ') + ` (${m.hardness_basis})` : '';
+  $('mat-hint').textContent = m ? [m.hardness_HB && `${m.hardness_HB} HB`, /^\d/.test(m.hardness_HRB) && m.hardness_HRB.replace(/^(\d+)\s*(.*)$/, (_, n, r) => `${n} HRB${r ? ' ' + r : ''}`)].filter(Boolean).join(' / ') + ` (${m.hardness_basis})` : '';
 }
 
 function update(pushHash = true) {
@@ -105,9 +106,12 @@ function update(pushHash = true) {
   note.textContent = o.noteText;
   note.classList.toggle('bad', o.nonCompliant);
   $('flag').hidden = !o.nonCompliant;
+  $('conly').hidden = !o.commercialOnly;
   // commercial reference (grayed, not selectable, never copied)
   const c = $('commercial');
   if (!o.commercial || o.commercial.hidden) c.innerHTML = '';
+  else if (o.commercial.isNotePN) c.innerHTML = `<span class="ref-k">Commercial PN (PEM)</span><span class="ref-v">${esc(o.commercial.pn)}</span>` +
+    `<span class="basis">${esc(o.commercial.basis || '')}</span>`;
   else c.innerHTML = `<span class="ref-k">Commercial reference (PEM)</span><span class="ref-v">${o.commercial.pn ? esc(o.commercial.pn) : 'No PEM equivalent'}</span>` +
     `<span class="basis">${o.commercial.pn ? 'Dimensional equivalent, reference only. Not part of the note; verify before substituting. ' : ''}${esc(o.commercial.basis || '')}</span>`;
   c.title = o.commercial?.basis || '';
@@ -122,8 +126,8 @@ function update(pushHash = true) {
   // sources for the row
   const matSrc = (data.materials.find(m => m.material === state.material)?.sources || '').match(/S-[A-Z0-9-]+/g) || [];
   // Material hardness sources, minus the other hardware family's spec.
-  const skip = { insert: ['S-45938', 'S-63540'], nut: ['S-63540'], stud: ['S-45938'] }[state.type];
-  const ids = [...new Set([...((o.row?.sources || '').match(/S-[A-Z0-9-]+/g) || []), ...matSrc.filter(id => !skip.includes(id)), { insert: 'S-CAGE-INS', nut: 'S-CAGE-NUT', stud: 'S-CAGE-STUD' }[state.type]])];
+  const skip = o.commercialOnly ? ['S-45938', 'S-63540'] : { insert: ['S-45938', 'S-63540', 'S-PEMSS'], nut: ['S-63540', 'S-PEMSS'], stud: ['S-45938', 'S-PEMSS'] }[state.type];
+  const ids = [...new Set([...((o.row?.sources || '').match(/S-[A-Z0-9-]+/g) || []), ...matSrc.filter(id => !skip.includes(id)), o.commercialOnly ? 'S-PEMCAGE' : { insert: 'S-CAGE-INS', nut: 'S-CAGE-NUT', stud: 'S-CAGE-STUD' }[state.type]])];
   $('sources').innerHTML = ids.map(id => sources[id] ? `<li><a href="${esc(sources[id].url)}" target="_blank" rel="noopener">${esc(sources[id].document)}</a></li>` : '').join('') +
     (o.row?.verification ? `<li class="ver">Verification: ${esc(o.row.verification)}</li>` : '');
   // graphic

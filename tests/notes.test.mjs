@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { parseCSV, compute } from '../src/logic.js';
 const rd = f => parseCSV(readFileSync(new URL('../data/' + f, import.meta.url), 'utf8'));
-const data = { inserts: rd('hardware_ms21208.csv'), nuts: rd('hardware_m45938_1.csv'), studs: rd('hardware_m63540_1.csv'), materials: rd('materials.csv') };
+const data = { inserts: rd('hardware_ms21208.csv'), nuts: [...rd('hardware_m45938_1.csv'), ...rd('hardware_pem_sp.csv')], studs: [...rd('hardware_m63540_1.csv'), ...rd('hardware_pem_fh4.csv')], materials: rd('materials.csv') };
 let fail = 0;
 function check(name, state, expected, extra) {
   const o = compute(state, data);
@@ -19,8 +19,22 @@ check('nut 10-32 6061 .090 -> CRES 16C', { type: 'nut', thk: '0.090' },
   ['4X THRU .250 +.003/-.000', 'INSTALL SELF-CLINCHING NUT', 'PN: M45938/1-16C', 'CAGE: 80205', 'NEAR SIDE'], o => o.commercial.pn === 'CLSS-032-2' && !o.nonCompliant);
 check('nut 10-32 .125 -> 17C, far side', { type: 'nut', thk: '0.125', side: 'far', qty: '2' },
   ['2X THRU .250 +.003/-.000', 'INSTALL SELF-CLINCHING NUT', 'PN: M45938/1-17C', 'CAGE: 80205', 'FAR SIDE']);
-check('nut A304 non-compliant + insert suggestion', { type: 'nut', material: 'A304 (annealed)', thk: '0.125' },
-  ['4X THRU .250 +.003/-.000', 'INSTALL SELF-CLINCHING NUT', 'PN: M45938/1-17C', 'CAGE: 80205', 'NEAR SIDE'], o => o.nonCompliant && o.warnings.some(w => w.actions.some(a => a.patch.type === 'insert')));
+check('nut A304 -> PEM SP commercial-only, caution + insert action', { type: 'nut', material: 'A304 (annealed)', thk: '0.125' },
+  ['4X THRU .250 +.003/-.000', 'INSTALL SELF-CLINCHING NUT', 'PN: SP-032-2', 'CAGE: 46384', 'NEAR SIDE'], o => o.commercialOnly && o.commercial.isNotePN && o.nonCompliant && o.warnings.some(w => w.text.includes('90 HRB or less') && w.actions.some(a => a.patch.type === 'insert')));
+check('nut A304 4-40 .040 -> SP-440-1 (longest shank that fits)', { type: 'nut', material: 'A304 (annealed)', thread: '4-40', thk: '0.040', qty: '1' },
+  ['THRU .166 +.003/-.000', 'INSTALL SELF-CLINCHING NUT', 'PN: SP-440-1', 'CAGE: 46384', 'NEAR SIDE']);
+check('nut A304 1/4-20 .062 far -> SP-0420-1', { type: 'nut', material: 'A304 (annealed)', thread: '1/4-20', thk: '0.062', side: 'far' },
+  ['4X THRU .344 +.003/-.000', 'INSTALL SELF-CLINCHING NUT', 'PN: SP-0420-1', 'CAGE: 46384', 'FAR SIDE']);
+check('stud A304 10-32 .060 -> FH4-032-5, compliant at limit', { type: 'stud', material: 'A304 (annealed)', thk: '0.060' },
+  ['4X THRU .189 +.003/-.000', 'INSTALL SELF-CLINCHING STUD', 'PN: FH4-032-5', 'CAGE: 46384', 'NEAR SIDE FLUSH'], o => o.commercialOnly && !o.nonCompliant && o.info.some(t => t.includes('at the limit')));
+check('stud A304 .250 above FH4 sheet range -> warn', { type: 'stud', material: 'A304 (annealed)' },
+  ['4X THRU .189 +.003/-.000', 'INSTALL SELF-CLINCHING STUD', 'PN: FH4-032-5', 'CAGE: 46384', 'NEAR SIDE FLUSH'], o => o.nonCompliant && o.warnings.some(w => w.text.includes('.040-.095')));
+check('stud A304 1/4-20 .090 far, L .625 -> FH4-0420-10', { type: 'stud', material: 'A304 (annealed)', thread: '1/4-20', thk: '0.090', side: 'far', len: '.625' },
+  ['4X THRU .249 +.003/-.000', 'INSTALL SELF-CLINCHING STUD', 'PN: FH4-0420-10', 'CAGE: 46384', 'FAR SIDE FLUSH'], o => !o.nonCompliant);
+check('legacy PN mode keeps PEM CAGE for commercial-only rows', { type: 'stud', material: 'A304 (annealed)', thk: '0.060', pnmode: 'legacy' },
+  ['4X THRU .189 +.003/-.000', 'INSTALL SELF-CLINCHING STUD', 'PN: FH4-032-5', 'CAGE: 46384', 'NEAR SIDE FLUSH']);
+check('6061 nut auto still picks mil CRES, not PEM', { type: 'nut', thk: '0.090' },
+  ['4X THRU .250 +.003/-.000', 'INSTALL SELF-CLINCHING NUT', 'PN: M45938/1-16C', 'CAGE: 80205', 'NEAR SIDE'], o => !o.commercialOnly);
 check('nut aluminum forced in 6061 -> warn', { type: 'nut', hwmat: 'aluminum', thk: '0.090' },
   ['4X THRU .296 +.003/-.000', 'INSTALL SELF-CLINCHING NUT', 'PN: M45938/1-18A', 'CAGE: 80205', 'NEAR SIDE'], o => o.nonCompliant);
 check('stud PRD example 10-32 .625 CRES near flush', { type: 'stud', thk: '0.090', len: '.625' },
@@ -37,4 +51,14 @@ check('insert .625 forced 1.5D warns with bottoming/thru actions', { thk: '0.625
   ['4X DRILL #7 (.2010) MIN DEPTH .568', 'CSINK .230-.260', 'TAP 10-32 STI', 'MIN FULL-THREAD DEPTH .320', 'INSTALL THREADED INSERT', 'BREAK TANG', 'PN: MS124695', 'CAGE: 80205', 'NEAR SIDE'], o => o.nonCompliant && o.warnings[0].actions.length === 3);
 check('app default (10-32 insert, 6061-T6, .250 thru)', {},
   ['4X DRILL #7 (.2010) THRU', 'CSINK .230-.260', 'TAP 10-32 STI THRU', 'INSTALL THREADED INSERT', 'BREAK TANG', 'PN: MS124655', 'CAGE: 80205', 'NEAR SIDE'], o => !o.nonCompliant && o.state.thk === '0.250' && o.state.hole === 'thru');
+check('A1008 insert uses steel drill column', { material: 'A1008 CS Type B' },
+  ['4X DRILL 13/64 (.2031) THRU', 'CSINK .230-.260', 'TAP 10-32 STI THRU', 'INSTALL THREADED INSERT', 'BREAK TANG', 'PN: MS124655', 'CAGE: 80205', 'NEAR SIDE'], o => !o.nonCompliant);
+check('A1008 nut auto -> carbon steel (CRES at limit)', { type: 'nut', material: 'A1008 CS Type B', thk: '0.090' },
+  ['4X THRU .250 +.003/-.000', 'INSTALL SELF-CLINCHING NUT', 'PN: M45938/1-16', 'CAGE: 80205', 'NEAR SIDE'], o => o.hwmatChosen === 'carbon' && o.commercial.pn === 'SS-032-2' && !o.nonCompliant);
+check('A1008 nut forced CRES -> compliant with at-limit info', { type: 'nut', material: 'A1008 CS Type B', thk: '0.090', hwmat: 'cres' },
+  ['4X THRU .250 +.003/-.000', 'INSTALL SELF-CLINCHING NUT', 'PN: M45938/1-16C', 'CAGE: 80205', 'NEAR SIDE'], o => !o.nonCompliant && o.info.some(t => t.includes('at the limit')));
+check('A1008 nut forced aluminum -> warn', { type: 'nut', material: 'A1008 CS Type B', thk: '0.090', hwmat: 'aluminum' },
+  ['4X THRU .296 +.003/-.000', 'INSTALL SELF-CLINCHING NUT', 'PN: M45938/1-18A', 'CAGE: 80205', 'NEAR SIDE'], o => o.nonCompliant);
+check('A1008 stud auto -> carbon steel', { type: 'stud', material: 'A1008 CS Type B', thk: '0.090', len: '.625' },
+  ['4X THRU .189 +.003/-.000', 'INSTALL SELF-CLINCHING STUD', 'PN: M63540/1-38', 'CAGE: 80205', 'NEAR SIDE FLUSH'], o => o.hwmatChosen === 'carbon' && o.commercial.pn === 'FH-032-10' && !o.nonCompliant);
 if (fail) { console.log(fail + ' failed'); process.exit(1); } else console.log('all passed');

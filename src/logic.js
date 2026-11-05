@@ -1,9 +1,9 @@
 // Pure note/validation logic. No DOM access, so it runs in the browser and in Node tests.
 // Rule: every value printed in a note comes straight from a CSV row; nothing is computed into the note.
 
-export const APP_VERSION = '1.0.0';
+export const APP_VERSION = "1.1.0";
 export const THREADS = ['4-40', '8-32', '10-32', '1/4-20'];
-export const MATERIALS = ['5052-H32', '6061-T6', 'A304 (annealed)'];
+export const MATERIALS = ['5052-H32', '6061-T6', 'A304 (annealed)', 'A1008 CS Type B'];
 
 // Basic thread geometry used only to draw the cross-section (never printed in a note).
 export const THREAD_GEOM = {
@@ -13,7 +13,8 @@ export const THREAD_GEOM = {
   '1/4-20': { D: 0.250, tpi: 20 },
 };
 
-export const HW_MAT_LABEL = { cres: 'CRES', carbon: 'Carbon steel', aluminum: 'Aluminum' };
+export const HW_MAT_LABEL = { cres: 'CRES', carbon: 'Carbon steel', aluminum: 'Aluminum', pem: 'PEM hardened stainless (commercial only)' };
+const HW_KEYS = ['cres', 'carbon', 'aluminum', 'pem'];
 
 // ---------------------------------------------------------------- CSV
 export function parseCSV(text) {
@@ -54,6 +55,7 @@ export function hwMatKey(materialText) {
   if (t.startsWith('CRES')) return 'cres';
   if (t.startsWith('CARBON')) return 'carbon';
   if (t.startsWith('ALUMINUM')) return 'aluminum';
+  if (t.startsWith('PEM')) return 'pem';
   return '';
 }
 
@@ -93,7 +95,7 @@ export function compute(state, data) {
 }
 
 function pnFor(row, s) {
-  if (s.pnmode === 'legacy') return { pn: row.legacy_pn || row.note_pn, cage: row.legacy_cage };
+  if (s.pnmode === 'legacy') return { pn: row.legacy_pn || row.note_pn, cage: row.legacy_cage || row.note_cage };
   return { pn: row.note_pn, cage: row.note_cage };
 }
 
@@ -182,33 +184,68 @@ function computeInsert(s, data, mat, T, validT, q, sideWord, out) {
 }
 
 function pickHwMat(s, mat, family, available) {
-  // family: 'm45938' or 'm63540'. Preference order when auto: CRES, carbon steel, aluminum.
-  const order = ['cres', 'carbon', 'aluminum'].filter(k => available.includes(k));
-  const ok = k => mat && String(mat[`${family}_${k}`] || '').startsWith('OK');
-  if (s.hwmat !== 'auto' && available.includes(s.hwmat)) return { key: s.hwmat, auto: false, ok: ok(s.hwmat) };
-  const first = order.find(ok);
+  // family: 'm45938' or 'm63540'. Auto preference: mil CRES, carbon steel, aluminum, then PEM commercial-only.
+  // A variant with margin wins over one exactly at its limit; a CAUTION variant is used only if nothing is rated.
+  const order = HW_KEYS.filter(k => available.includes(k));
+  const rule = k => String(mat?.[`${family}_${k}`] || '');
+  const ok = k => rule(k).startsWith('OK');
+  const caution = k => rule(k).startsWith('CAUTION');
+  if (s.hwmat !== 'auto' && available.includes(s.hwmat)) return { key: s.hwmat, auto: false, ok: ok(s.hwmat), caution: caution(s.hwmat) };
+  const first = order.find(k => ok(k) && !/at limit/i.test(rule(k))) || order.find(ok);
   if (first) return { key: first, auto: true, ok: true };
+  const c = order.find(caution);
+  if (c) return { key: c, auto: true, ok: false, caution: true };
   return { key: order[0], auto: true, ok: false };
 }
 
 function hardnessText(mat) {
   if (!mat) return '';
-  const hrb = /^\d/.test(mat.hardness_HRB) ? `${mat.hardness_HRB} HRB` : '';
-  return [hrb, mat.hardness_HB ? `${mat.hardness_HB} HB` : ''].filter(Boolean).join(' / ');
+  // "92 max" / "201 max" -> "92 HRB / 201 HB max"; "70 typ" -> "70 HRB typ"
+  const part = (v, unit) => { const m = String(v || '').match(/^(\d+)\s*(.*)$/); return m ? { t: `${m[1]} ${unit}`, q: m[2] } : null; };
+  const ps = [part(mat.hardness_HRB, 'HRB'), part(mat.hardness_HB, 'HB')].filter(Boolean);
+  const q = [...new Set(ps.map(p => p.q).filter(Boolean))].join(' ');
+  return ps.map(p => p.t).join(' / ') + (q ? ' ' + q : '');
+}
+
+// Short hardware name for messages: mil variants by material, PEM commercial rows by type.
+function hwName(key, fam) {
+  if (key === 'pem') return fam === 'nut' ? 'PEM SP' : 'PEM FH4';
+  return HW_MAT_LABEL[key];
 }
 
 function hardnessWarning(s, mat, family, pick, rowLimit, out) {
-  if (pick.ok) return;
   const fam = family === 'm45938' ? 'nut' : 'stud';
-  const anyOk = ['cres', 'carbon', 'aluminum'].some(k => String(mat?.[`${family}_${k}`] || '').startsWith('OK'));
+  const rule = String(mat?.[`${family}_${pick.key}`] || '');
+  if (pick.ok) {
+    if (/at limit/i.test(rule)) {
+      const isMax = /^ASTM \S+ maximum/.test(mat?.hardness_basis || '');
+      out.info.push(`${hwName(pick.key, fam)} ${fam}s are rated for sheet up to ${rowLimit} HRB; ${s.material} is ${hardnessText(mat)}${isMax ? ' (spec maximum), so it is within the rating at the limit' : ', a typical value rather than a spec maximum, at the limit'}. Confirm the actual sheet hardness${pick.auto || isMax ? '' : ', or use Auto to select carbon steel'}.`);
+    }
+    return;
+  }
+  const anyOk = HW_KEYS.some(k => String(mat?.[`${family}_${k}`] || '').startsWith('OK'));
   const acts = [];
   if (anyOk && !pick.auto) acts.push({ label: 'Auto-select hardware material', patch: { hwmat: 'auto' } });
   if (!anyOk) acts.push({ label: 'Use threaded insert instead', patch: { type: 'insert', len: 'auto', hwmat: 'auto' } });
+  if (pick.caution) {
+    out.warnings.push({
+      text: `${hwName(pick.key, fam)} ${fam}s are rated for stainless sheet up to ${rowLimit} HRB. ${s.material} can be up to ${hardnessText(mat).replace(/ max$/, '')} per its spec. Confirm the sheet is ${rowLimit} HRB or less (for example on the material cert), or use a helical insert.`,
+      actions: acts,
+    });
+    return;
+  }
   out.warnings.push({
-    text: `${HW_MAT_LABEL[pick.key]} ${fam}s are rated for sheet up to ${rowLimit} HRB. ${s.material} is ${hardnessText(mat)}${mat?.hardness_basis?.includes('maximum') ? ' (spec maximum)' : ''}.` +
-      (anyOk ? '' : ` No ${fam} variant in this spec suits ${s.material}; a helical insert is recommended.`),
+    text: `${hwName(pick.key, fam)} ${fam}s are rated for sheet up to ${rowLimit} HRB. ${s.material} is ${hardnessText(mat)}${/^ASTM \S+ maximum/.test(mat?.hardness_basis || '') ? ' (spec maximum)' : ''}.` +
+      (anyOk ? '' : ` No ${fam} variant suits ${s.material}; a helical insert is recommended.`),
     actions: acts,
   });
+}
+
+function commercialOnlyInfo(row, fam, out) {
+  if (row.commercial_only !== 'Y') return;
+  out.commercialOnly = true;
+  out.info.unshift(`Commercial-only part: no military PN exists for PEM ${row.note_pn.split('-')[0]} ${fam}s (PEM MIL cross reference). The note uses the PEM PN and PEM CAGE ${row.note_cage}.`);
+  out.info.push('Sheet must be annealed. Punch the hole and do not deburr it. Keep away from bends and cold-worked areas (PEM Dos and Don\'ts).');
 }
 
 function computeNut(s, data, mat, T, validT, q, sideWord, out) {
@@ -220,28 +257,32 @@ function computeNut(s, data, mat, T, validT, q, sideWord, out) {
   const rows = all.filter(r => hwMatKey(r.material) === pick.key).sort((a, b) => num(a.shank_length_A) - num(b.shank_length_A));
   const inRange = r => validT && T >= num(r.sheet_thk_min) && (r.sheet_thk_max === '' || T <= num(r.sheet_thk_max));
   out.choices = rows.map(r => ({ value: r.shank_length_A, label: `A ${dec(r.shank_length_A)}  (sheet ${r.sheet_thk_min}-${r.sheet_thk_max || 'up'})`, fits: inRange(r) }));
-  const match = rows.find(inRange);
+  const match = rows.filter(inRange).pop(); // longest shank that fits the sheet
   let row = s.len === 'auto' ? (match || rows[0]) : (rows.find(r => r.shank_length_A === s.len) || match || rows[0]);
   if (s.len === 'auto' && !match && validT) row = T < num(rows[0].sheet_thk_min) ? rows[0] : rows[rows.length - 1];
   out.row = row; out.autoLen = match ? match.shank_length_A : null;
   out.hwmatReason = pick.ok
-    ? `${pick.auto ? 'Auto: ' : ''}${HW_MAT_LABEL[pick.key]} (rated to ${row.max_sheet_hardness_HRB} HRB; ${s.material} ${hardnessText(mat)})`
-    : `${HW_MAT_LABEL[pick.key]} not rated for ${s.material}`;
+    ? `${pick.auto ? 'Auto: ' : ''}${pick.key === 'pem' ? hwName('pem', 'nut') + ', commercial only' : HW_MAT_LABEL[pick.key]} (rated to ${row.max_sheet_hardness_HRB} HRB; ${s.material} ${hardnessText(mat)})`
+    : pick.caution
+      ? `${pick.auto ? 'Auto: ' : ''}${pick.key === 'pem' ? hwName('pem', 'nut') + ', commercial only' : HW_MAT_LABEL[pick.key]} (rated to ${row.max_sheet_hardness_HRB} HRB; ${s.material} ${hardnessText(mat)}): confirm sheet hardness`
+      : `${HW_MAT_LABEL[pick.key]} not rated for ${s.material}`;
   hardnessWarning(s, mat, 'm45938', pick, row.max_sheet_hardness_HRB, out);
 
   if (validT && !match) {
     const minT = num(rows[0].sheet_thk_min);
-    if (T < minT) out.warnings.push({ text: `${dec(T.toFixed(3))} in is below the minimum sheet thickness (${rows[0].sheet_thk_min}) for ${HW_MAT_LABEL[pick.key]} ${s.thread} nuts.`, actions: [{ label: `Set thickness to ${rows[0].sheet_thk_min}`, patch: { thk: '0' + rows[0].sheet_thk_min, len: 'auto' } }] });
+    if (T < minT) out.warnings.push({ text: `${dec(T.toFixed(3))} in is below the minimum sheet thickness (${rows[0].sheet_thk_min}) for ${hwName(pick.key, 'nut')} ${s.thread} nuts.`, actions: [{ label: `Set thickness to ${rows[0].sheet_thk_min}`, patch: { thk: '0' + rows[0].sheet_thk_min, len: 'auto' } }] });
   } else if (validT && !inRange(row)) {
     out.warnings.push({ text: `Shank A ${dec(row.shank_length_A)} is for sheet ${row.sheet_thk_min}-${row.sheet_thk_max || 'up'}; material is ${dec(T.toFixed(3))} in.`, actions: [{ label: `Use A ${dec(match.shank_length_A)} (matches thickness)`, patch: { len: match.shank_length_A } }] });
   }
   const { pn, cage } = pnFor(row, s);
   out.prep.push(`${q}THRU ${row.hole_dia_in_sheet} ${row.hole_tol}`);
   out.install.push('INSTALL SELF-CLINCHING NUT', `PN: ${pn}`, `CAGE: ${cage}`, sideWord);
-  out.commercial = { pn: row.commercial_pem_pn, basis: row.commercial_pem_basis, hidden: false };
+  out.commercial = { pn: row.commercial_pem_pn, basis: row.commercial_pem_basis, hidden: false, isNotePN: row.commercial_only === 'Y' };
   const edge = row.min_edge_dist_spec || '';
-  out.info.push(edge ? `Minimum hole center to sheet edge: ${edge} (spec).` : `Minimum edge distance is illegible in the spec scan${row.min_edge_dist_vendor_ref ? `; PEM reference value ${row.min_edge_dist_vendor_ref} (not from spec)` : ''}.`);
+  const edgeSrc = row.commercial_only === 'Y' ? 'PEM' : 'spec';
+  out.info.push(edge ? `Minimum hole center to sheet edge: ${edge} (${edgeSrc}).` : `Minimum edge distance is illegible in the spec scan${row.min_edge_dist_vendor_ref ? `; PEM reference value ${row.min_edge_dist_vendor_ref} (not from spec)` : ''}.`);
   out.info.push('Install the mating screw from the shank (pilot) side of the nut.');
+  commercialOnlyInfo(row, 'nut', out);
   const tg = THREAD_GEOM[s.thread];
   out.geom = {
     kind: 'nut', T, side: s.side, P: 1 / tg.tpi, D: tg.D, tpi: tg.tpi,
@@ -250,15 +291,17 @@ function computeNut(s, data, mat, T, validT, q, sideWord, out) {
   };
   out.details = [
     ['PN / CAGE (current)', `${row.note_pn} / ${row.note_cage}`],
-    ['Legacy CAGE', row.legacy_cage],
+    ['Legacy CAGE', row.legacy_cage || 'none (commercial-only part)'],
     ['Nut material', row.material],
     ['Max sheet hardness', `${row.max_sheet_hardness_HRB} HRB`],
-    ['Sheet thickness range', `${row.sheet_thk_min}-${row.sheet_thk_max || 'up'}`],
+    ['Sheet thickness range', row.commercial_only === 'Y' ? `${row.sheet_thk_min} min (PEM recommended)` : `${row.sheet_thk_min}-${row.sheet_thk_max || 'up'}`],
     ['Hole in sheet', `${row.hole_dia_in_sheet} ${row.hole_tol}`],
     ['Shank A / body C', `${row.shank_length_A} / ${row.body_dia_C}`],
     ['Head E / T', `${row.head_dia_E} / ${row.head_thk_T}`],
     ['Min edge distance', edge || (row.min_edge_dist_vendor_ref ? `illegible in spec (PEM ref ${row.min_edge_dist_vendor_ref})` : 'illegible in spec')],
-    ['Install force (approx) / push-out / torque-out', `${row.approx_install_force_lb} lb / ${row.pushout_min_lb} lb / ${row.torqueout_min_inlb} in-lb`],
+    row.commercial_only === 'Y'
+      ? ['Install force / push-out / torque-out (PEM avg, 304 SS)', `${row.approx_install_force_lb} lb / ${row.pushout_avg_lb} lb / ${row.torqueout_avg_inlb} in-lb`]
+      : ['Install force (approx) / push-out / torque-out', `${row.approx_install_force_lb} lb / ${row.pushout_min_lb} lb / ${row.torqueout_min_inlb} in-lb`],
   ];
 }
 
@@ -275,11 +318,16 @@ function computeStud(s, data, mat, T, validT, q, sideWord, out) {
   let row = s.len === 'auto' ? (firstFit || rows[rows.length - 1]) : (rows.find(r => r.length_L === s.len) || firstFit || rows[0]);
   out.row = row; out.autoLen = firstFit ? firstFit.length_L : null;
   out.hwmatReason = pick.ok
-    ? `${pick.auto ? 'Auto: ' : ''}${HW_MAT_LABEL[pick.key]} (rated to ${row.max_sheet_hardness_HRB} HRB; ${s.material} ${hardnessText(mat)})`
-    : `${HW_MAT_LABEL[pick.key]} not rated for ${s.material}`;
+    ? `${pick.auto ? 'Auto: ' : ''}${pick.key === 'pem' ? hwName('pem', 'stud') + ', commercial only' : HW_MAT_LABEL[pick.key]} (rated to ${row.max_sheet_hardness_HRB} HRB; ${s.material} ${hardnessText(mat)})`
+    : pick.caution
+      ? `${pick.auto ? 'Auto: ' : ''}${pick.key === 'pem' ? hwName('pem', 'stud') + ', commercial only' : HW_MAT_LABEL[pick.key]} (rated to ${row.max_sheet_hardness_HRB} HRB; ${s.material} ${hardnessText(mat)}): confirm sheet hardness`
+      : `${HW_MAT_LABEL[pick.key]} not rated for ${s.material}`;
   hardnessWarning(s, mat, 'm63540', pick, row.max_sheet_hardness_HRB, out);
   if (validT && T < num(row.min_sheet_thk)) {
     out.warnings.push({ text: `${dec(T.toFixed(3))} in is below the minimum sheet thickness (${row.min_sheet_thk}) for ${s.thread} studs.`, actions: [{ label: `Set thickness to ${row.min_sheet_thk}`, patch: { thk: '0' + row.min_sheet_thk } }] });
+  }
+  if (validT && row.sheet_thk_max && T > num(row.sheet_thk_max)) {
+    out.warnings.push({ text: `${dec(T.toFixed(3))} in is above the PEM sheet thickness range (${row.min_sheet_thk}-${row.sheet_thk_max}) for ${s.thread} FH4 studs; PEM notes performance may be reduced in thicker sheets.`, actions: [{ label: `Set thickness to ${row.sheet_thk_max}`, patch: { thk: '0' + row.sheet_thk_max } }] });
   }
   if (validT && !protrudes(row)) {
     out.warnings.push({ text: `Stud length L ${row.length_L} does not protrude past ${dec(T.toFixed(3))} in sheet (L is measured from the flush head face).`,
@@ -288,10 +336,16 @@ function computeStud(s, data, mat, T, validT, q, sideWord, out) {
   const { pn, cage } = pnFor(row, s);
   out.prep.push(`${q}THRU ${row.hole_dia_in_sheet} ${row.hole_tol}`);
   out.install.push('INSTALL SELF-CLINCHING STUD', `PN: ${pn}`, `CAGE: ${cage}`, `${sideWord} FLUSH`);
-  out.commercial = { pn: row.commercial_pem_pn, basis: row.commercial_pem_basis, hidden: false };
+  out.commercial = { pn: row.commercial_pem_pn, basis: row.commercial_pem_basis, hidden: false, isNotePN: row.commercial_only === 'Y' };
   const edge = row.min_edge_dist_spec || '';
-  out.info.push(edge ? `Minimum hole center to sheet edge: ${edge} (spec).` : `Minimum edge distance is not legible in the spec${row.min_edge_dist_vendor_ref ? `; PEM reference value ${row.min_edge_dist_vendor_ref} (not from spec)` : ''}.`);
-  out.info.push(`Mating nut tightening torque: ${row.nut_tightening_torque_max_inlb} in-lb max.`);
+  const edgeSrc = row.commercial_only === 'Y' ? 'PEM' : 'spec';
+  out.info.push(edge ? `Minimum hole center to sheet edge: ${edge} (${edgeSrc}).` : `Minimum edge distance is not legible in the spec${row.min_edge_dist_vendor_ref ? `; PEM reference value ${row.min_edge_dist_vendor_ref} (not from spec)` : ''}.`);
+  out.info.push(row.commercial_only === 'Y' ? `Recommended mating nut tightening torque: ${row.nut_tightening_torque_max_inlb} in-lb (PEM).` : `Mating nut tightening torque: ${row.nut_tightening_torque_max_inlb} in-lb max.`);
+  if (row.commercial_only === 'Y') {
+    out.info.push('Install with the PEM special anvil with a raised ring. FH4 is 400-series stainless: magnetic, and not for appreciable corrosive exposure or service above 300\u00b0F (PEM).');
+    if (row.max_hole_in_attached_parts) out.info.push(`Max clearance hole in attached parts: ${row.max_hole_in_attached_parts}.`);
+  }
+  commercialOnlyInfo(row, 'stud', out);
   const tg = THREAD_GEOM[s.thread];
   out.geom = {
     kind: 'stud', T, side: s.side, P: 1 / tg.tpi, D: tg.D, tpi: tg.tpi,
@@ -300,11 +354,11 @@ function computeStud(s, data, mat, T, validT, q, sideWord, out) {
   };
   out.details = [
     ['PN / CAGE (current)', `${row.note_pn} / ${row.note_cage}`],
-    ['Legacy CAGE', row.legacy_cage],
+    ['Legacy CAGE', row.legacy_cage || 'none (commercial-only part)'],
     ['Stud material', row.material],
     ['Max sheet hardness', `${row.max_sheet_hardness_HRB} HRB`],
     ['Length L', `${row.length_L} ${row.length_tol} (${row.length_datum})`],
-    ['Min sheet thickness', row.min_sheet_thk],
+    ['Sheet thickness', row.sheet_thk_max ? `${row.min_sheet_thk}-${row.sheet_thk_max} (PEM)` : `${row.min_sheet_thk} min`],
     ['Hole in sheet', `${row.hole_dia_in_sheet} ${row.hole_tol}`],
     ['Head dia H', `${row.head_dia} ${row.head_dia_tol}`],
     ['Unthreaded length S (max, from head face)', row.unthreaded_S_max],

@@ -129,7 +129,7 @@
   <section class="panel note-panel" aria-labelledby="note-h">
     <div class="panel-head">
       <h2 id="note-h" class="panel-title">Drawing note</h2>
-      <span class="flag" id="flag" hidden>Non-compliant selection</span>
+      <span class="tags"><span class="flag info-flag" id="conly" hidden>Commercial PN, no mil equivalent</span><span class="flag" id="flag" hidden>Non-compliant selection</span></span>
     </div>
     <pre class="note" id="note" aria-live="polite"></pre>
     <div class="copy-row">
@@ -171,12 +171,14 @@
       <li><a href="data/hardware_ms21208.csv" download>hardware_ms21208.csv</a> helical inserts, MS122xxx / MS124xxx</li>
       <li><a href="data/hardware_m45938_1.csv" download>hardware_m45938_1.csv</a> clinch nuts</li>
       <li><a href="data/hardware_m63540_1.csv" download>hardware_m63540_1.csv</a> flush-head studs</li>
+      <li><a href="data/hardware_pem_sp.csv" download>hardware_pem_sp.csv</a> PEM SP nuts, commercial only</li>
+      <li><a href="data/hardware_pem_fh4.csv" download>hardware_pem_fh4.csv</a> PEM FH4 studs, commercial only</li>
       <li><a href="data/materials.csv" download>materials.csv</a> and <a href="data/sources.csv" download>sources.csv</a></li>
     </ul>
   </section>
   <section id="about" class="foot-col">
     <h2 class="foot-h">Spec revisions</h2>
-    <p>NASM33537 (insert assembly dimensions; replaces MS33537E). MS21208B, inactive for new design. MIL-N-45938/1B, superseded by NASM45938/1. MIL-S-63540/1A, superseded by NASM63540/1. Stud length L follows the PEM flush-head datum.</p>
+    <p>NASM33537 (insert assembly dimensions; replaces MS33537E). MS21208B, inactive for new design. MIL-N-45938/1B, superseded by NASM45938/1. MIL-S-63540/1A, superseded by NASM63540/1. Stud length L follows the PEM flush-head datum. PEM SP nuts and FH4 studs (bulletin SS, rev 10/13/26) have no mil PN and are used only where no mil part is rated, such as A304.</p>
     <p class="disclaimer">Drafting aid only. Verify every note against the current governing specification before release.</p>
     <p class="ver" id="ver"></p>
   </section>
