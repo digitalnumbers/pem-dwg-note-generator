@@ -113,15 +113,6 @@
             <option value="legacy">Legacy PN and CAGE</option>
           </select>
         </div>
-        <div class="field" data-for="insert">
-          <label for="csk">Countersink symbol</label>
-          <select id="csk" name="csk">
-            <option value="text">CSINK (plain text)</option>
-            <option value="sw">SolidWorks tag &lt;MOD-CSK&gt; (unverified)</option>
-            <option value="unicode">Unicode &#x2335;</option>
-          </select>
-          <label class="check"><input type="checkbox" id="cskAngle" name="cskAngle"> Add countersink angle (X 120&deg;)</label>
-        </div>
       </details>
       <button type="button" class="btn-ghost" id="reset">Reset to defaults</button>
     </form>
@@ -140,6 +131,7 @@
       <button type="button" class="btn-ghost" id="copy-link">Copy link</button>
       <span class="toast" id="toast" role="status"></span>
     </div>
+    <p class="hint sym-hint">&lt;HOLE-SINK&gt; and &lt;HOLE-DEPTH&gt; are SolidWorks note tags for the countersink and depth symbols; &Oslash; and &deg; are plain characters. Values are limited to 3 decimal places.</p>
     <div id="warnings" class="warnings"></div>
     <ul id="info" class="info" role="list"></ul>
     <details class="spec" open>

@@ -1,14 +1,14 @@
 // To-scale cross-section renderer. Input: compute(...).geom. Output: SVG markup string.
 // World units are inches. z = depth from the install face into the substrate (0 = install face).
 // Near side: install face on top. Far side: drawing is flipped so the install face is at the bottom.
+import { cap3, fmtThk } from './logic.js';
 
 export const VB_W = 760;
 let VB_H = 560;
 const INK = '#1c1f23', MUTED = '#5c6066', BLUE = '#1d4f8f', PAPER = '#ffffff';
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
 const f3 = v => { const s = v.toFixed(3); return s.startsWith('0.') ? s.slice(1) : s; };
-const fT = v => (v.toFixed(4).endsWith('0') ? f3(v) : f4(v));
-const f4 = v => { const s = v.toFixed(4); return s.startsWith('0.') ? s.slice(1) : s; };
+const fT = v => fmtThk(v); // max 3 decimal places (v1.4)
 const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 export function drawSection(g, opts = {}) {
@@ -73,6 +73,7 @@ export function drawSection(g, opts = {}) {
 
   // ---------- dimension helpers
   const label = (x, y, text, anchor = 'middle', color = BLUE) => {
+    text = cap3(text);
     const w = text.length * 7.3 + 8, h = 16;
     let lx = anchor === 'middle' ? x - w / 2 : anchor === 'start' ? x - 4 : x - w + 4;
     const clamp = Math.min(Math.max(lx, 2), VB_W - w - 2) - lx; // keep labels inside the frame
@@ -159,7 +160,7 @@ export function drawSection(g, opts = {}) {
     const yBot = Y(T) - out(40);
     dims.push(dimH(yBot, dR, `DRILL ${g.drillLabel}`, Y(blind ? zDepth : T), 'left'));
     const zP = Math.min(zThr, setdown + g.Ln) * 0.55;
-    dims.push(leader(X(-stiR), Y(zP), X(-cskR) - 40, installY + out(46), `${f4(P_)} P (${g.tpi} TPI)`));
+    dims.push(leader(X(-stiR), Y(zP), X(-cskR) - 40, installY + out(46), `${f3(P_)} P (${g.tpi} TPI)`));
     if (blind && g.depth + pointZ > T + 1e-6) dims.push(label(cx, Y(T) - out(20) + 4, 'DRILL POINT BREAKS THROUGH', 'middle', '#8f4211'));
   } else if (g.kind === 'nut') {
     const P_ = g.P, rMin = g.D / 2 - 0.541 * P_, rMaj = g.D / 2;
@@ -178,7 +179,7 @@ export function drawSection(g, opts = {}) {
     dims.push(dimV(dx + 110, 0, g.A, `A ${String(g.ALabel).replace(/^0\./, '.')}`, X(g.C / 2)));
     dims.push(dimH(Y(-g.Eh) + out(36), g.E / 2, `E ${g.ELabel}`, Y(-g.Eh), 'right'));
     dims.push(dimH(Y(T) - out(40), hR, `HOLE ${g.holeLabel}`, Y(T), 'left'));
-    dims.push(leader(X(-(rMin + rMaj) / 2), Y(-g.Eh * 0.4), X(-g.E / 2) - 40, Y(-g.Eh) + out(36), `${f4(P_)} P (${g.tpi} TPI)`));
+    dims.push(leader(X(-(rMin + rMaj) / 2), Y(-g.Eh * 0.4), X(-g.E / 2) - 40, Y(-g.Eh) + out(36), `${f3(P_)} P (${g.tpi} TPI)`));
   } else {
     // Head thickness is not given by the spec (flush head, sheet >= min_sheet_thk); drawn schematic at half the min sheet.
     const P_ = g.P, rMaj = g.D / 2, rMin = g.D / 2 - 0.541 * P_, hR = g.hole / 2, H = Math.min(g.minSheet * 0.5, T * 0.6);
@@ -201,7 +202,7 @@ export function drawSection(g, opts = {}) {
     dims.push(dimH(installY + out(40), g.headD / 2, `HEAD ${g.headDLabel}`, installY, 'right'));
     dims.push(leader(X(-hR), Y((H + T) / 2), X(-halfW) - 46, Y(T) - out(-1) * 0 + (near ? 30 : -30), `HOLE ${g.holeLabel}`));
     const zP = T + (g.L - T) * 0.5;
-    if (g.L > T + 2 * P_) dims.push(leader(X(-rMaj), Y(zP), X(-rMaj) - 70, Y(zP) + (near ? 18 : -18), `${f4(P_)} P (${g.tpi} TPI)`));
+    if (g.L > T + 2 * P_) dims.push(leader(X(-rMaj), Y(zP), X(-rMaj) - 70, Y(zP) + (near ? 18 : -18), `${f3(P_)} P (${g.tpi} TPI)`));
   }
 
   // install face marker: small triangle on the face plus a legend line

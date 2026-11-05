@@ -1,7 +1,7 @@
 // Pure note/validation logic. No DOM access, so it runs in the browser and in Node tests.
 // Rule: every value printed in a note comes straight from a CSV row; nothing is computed into the note.
 
-export const APP_VERSION = "1.3.0";
+export const APP_VERSION = "1.4.0";
 export const THREADS = ['4-40', '8-32', '10-32', '1/4-20'];
 export const MATERIALS = ['5052-H32', '6061-T6', 'A304 (annealed)', 'A1008 CS Type B'];
 
@@ -43,13 +43,58 @@ export function parseCSV(text) {
 }
 
 // ---------------------------------------------------------------- formatting
-// Drafting decimal style: drop the leading zero (0.568 -> .568). Digits are kept exactly as stored.
+// Drafting symbols for SolidWorks notes (v1.4). Tags are SolidWorks note tags; degree and diameter are literal characters.
+export const SYM = { csk: '<HOLE-SINK>', depth: '<HOLE-DEPTH>', dia: '\u00d8', deg: '\u00b0', pm: '\u00b1' };
+export const MAX_PLACES = 3;
+
+// Round a decimal string to at most 3 places, half up, using string math so .2055 -> .206 (no float error).
+// Values with 3 or fewer places keep their stored digits (.250 stays .250).
+export function round3(v, pad = false) {
+  let s = typeof v === 'number' ? (Number.isFinite(v) ? v.toFixed(6) : String(v)) : String(v).trim();
+  const m = s.match(/^(-?)(\d*)\.(\d+)$/);
+  if (!m) return s;
+  let [, sign, ip, fp] = m;
+  if (typeof v === 'number') fp = fp.replace(/0+$/, '');
+  if (fp.length > MAX_PLACES) {
+    let n = BigInt((ip || '0') + fp.slice(0, MAX_PLACES)) + (fp[MAX_PLACES] >= '5' ? 1n : 0n);
+    const t = n.toString().padStart(MAX_PLACES + 1, '0');
+    ip = t.slice(0, -MAX_PLACES); fp = t.slice(-MAX_PLACES);
+  }
+  if (pad) fp = fp.padEnd(MAX_PLACES, '0');
+  return `${sign}${ip || '0'}${fp ? '.' + fp : ''}`;
+}
+// Drafting decimal style: drop the leading zero (0.568 -> .568), at most 3 decimal places.
 export function dec(v) {
-  const s = String(v).trim();
-  return s.startsWith('0.') ? s.slice(1) : s;
+  const s = round3(v);
+  return s.startsWith('0.') ? s.slice(1) : s.startsWith('-0.') ? '-' + s.slice(2) : s;
+}
+// Safety net: cap every decimal in a display string at 3 places (".0188-.0375" -> ".019-.038").
+export function cap3(text) {
+  return String(text ?? '').replace(/(^|[^\w.])(\d*\.\d{4,})(?![\d.])/g, (_, pre, n) => pre + dec(n));
 }
 export function num(v) { return parseFloat(String(v).trim()); }
-const drillText = s => s.replace(/\(0\./, '(.'); // "#7 (0.2010)" -> "#7 (.2010)"
+// "#7 (0.2010)" -> "#7 (\u00d8.201)"
+const drillText = s => s.replace(/\(([\d.]+)\)/, (_, v) => `(${SYM.dia}${dec(v)})`);
+// "120 +/-5 deg" -> "120\u00b0 \u00b15\u00b0" (value and tolerance straight from the CSV).
+export function angleText(v) {
+  const m = String(v || '').match(/^\s*([\d.]+)\s*(?:(?:\+\/-|\u00b1)\s*([\d.]+))?/);
+  if (!m) return String(v || '');
+  return `${m[1]}${SYM.deg}${m[2] ? ` ${SYM.pm}${m[2]}${SYM.deg}` : ''}`;
+}
+// Hole size and tolerance for a clinch-hardware hole, at most 3 places. When the spec nominal has more
+// places (.1875 +.003/-.000), both limits are rounded inward so the callout stays inside the spec range.
+export function holeSize(dia, tol) {
+  const d = String(dia).trim(), t = String(tol || '').trim();
+  const places = (d.split('.')[1] || '').length;
+  const tm = t.match(/^\+(\d*\.\d+)\s*\/\s*-(\d*\.\d+)$/);
+  if (places <= MAX_PLACES || !tm) return { text: `${SYM.dia}${dec(d)}${t ? ' ' + t : ''}`, nominal: dec(d), adjusted: places > MAX_PLACES };
+  const q = x => Math.round(num(x) * 10000);
+  const lo = q(d) - q(tm[2]), hi = q(d) + q(tm[1]);
+  const lo3 = Math.ceil(lo / 10) / 1000, hi3 = Math.floor(hi / 10) / 1000;
+  const f = x => dec(x.toFixed(3));
+  const text = q(tm[2]) === 0 ? `${SYM.dia}${f(lo3)} +${f(hi3 - lo3)}/-.000` : `${SYM.dia}${f(lo3)}-${f(hi3)}`;
+  return { text, nominal: f(lo3), adjusted: true, limits: `${f(lo3)}-${f(hi3)}` };
+}
 export function drillDecimal(s) { const m = s.match(/\(([\d.]+)\)/); return m ? num(m[1]) : NaN; }
 
 export function hwMatKey(materialText) {
@@ -66,12 +111,13 @@ export function hwMatKey(materialText) {
 export function stdThicknesses(mat) {
   if (!mat || !mat.std_thk_in) return [];
   const v = mat.std_thk_in.split(';'), l = (mat.std_thk_labels || '').split(';');
-  return v.map((x, i) => ({ t: num(x), value: x.trim(), label: (l[i] || '').trim() }));
+  // Gauge nominals such as .0598 are carried at 3 places (.060), the same value the note and field use.
+  return v.map((x, i) => { const r = round3(x.trim(), true); return { t: num(r), value: r, label: (l[i] || '').trim() }; });
 }
-// Thickness text: 3 places, or 4 when the 4th digit is significant (gauge nominals such as .0598).
-export function fmtThk(t) { const s4 = t.toFixed(4); return dec(s4.endsWith('0') ? t.toFixed(3) : s4); }
+// Thickness text: always 3 places (v1.4).
+export function fmtThk(t) { return dec(round3(t, true)); }
 export function stdName(x) { return /^\./.test(x.label) ? 'std ' + x.label.split(' ').slice(1).join(' ') : x.label; }
-const STD_TOL = 0.0005;
+const STD_TOL = 0.0005 + 1e-9;
 export function stdMatch(mat, T) { return stdThicknesses(mat).find(x => Math.abs(x.t - T) <= STD_TOL) || null; }
 // Suggest the smallest (or largest) standard thickness that satisfies ok(t); fall back to the exact value.
 export function stdSuggest(mat, ok, exact, largest = false, extra = {}) {
@@ -81,12 +127,10 @@ export function stdSuggest(mat, ok, exact, largest = false, extra = {}) {
   return { label: `Set thickness to ${dec(exact)} (non-standard)`, patch: { thk: exact, ...extra } };
 }
 
-const CSK_SYMBOL = { text: 'CSINK', sw: '<MOD-CSK>', unicode: '\u2335' };
-
 export const DEFAULT_STATE = {
   type: 'insert', material: '6061-T6', thk: '0.250', hole: 'thru', tap: 'plug',
   thread: '10-32', qty: '4', len: 'auto', side: 'near', hwmat: 'auto',
-  pnmode: 'current', csk: 'text', cskAngle: false,
+  pnmode: 'current',
 };
 
 // ---------------------------------------------------------------- compute
@@ -113,6 +157,14 @@ export function compute(state, data) {
   else computeStud(s, data, mat, T, validT, q, sideWord, out);
 
   out.nonCompliant = out.warnings.length > 0;
+  // Max 3 decimal places everywhere the user reads a value (v1.4).
+  out.prep = out.prep.map(cap3); out.install = out.install.map(cap3);
+  out.info = out.info.map(cap3);
+  out.warnings = out.warnings.map(w => ({ ...w, text: cap3(w.text), actions: w.actions.map(a => ({ ...a, label: cap3(a.label) })) }));
+  if (out.details) out.details = out.details.map(([k, v]) => [k, cap3(v)]);
+  out.choices = out.choices.map(c => ({ ...c, label: cap3(c.label) }));
+  if (out.commercial?.basis) out.commercial.basis = cap3(out.commercial.basis);
+  out.hwmatReason = cap3(out.hwmatReason);
   out.noteLines = [...out.prep, ...out.install];
   out.noteText = out.noteLines.join('\n');
   // Hole-prep block: hole lines plus the side line so it can be pasted on its own.
@@ -178,9 +230,11 @@ function computeInsert(s, data, mat, T, validT, q, sideWord, out) {
 
   const { pn, cage } = pnFor(row, s);
   const drill = drillText(row[drillCol]);
-  const csk = `${CSK_SYMBOL[s.csk] || 'CSINK'} ${dec(row.csink_dia_min)}-${dec(row.csink_dia_max)}${s.cskAngle ? ' X 120\u00b0' : ''}`;
+  // ASME Y14.5-2018 4.5.12: a countersink is specified by diameter and included angle. The symbol precedes
+  // the dimension with no space. Angle and tolerance come from csink_angle (NASM33537: 120 +/-5 deg).
+  const csk = `${SYM.csk}${SYM.dia}${dec(row.csink_dia_min)}-${dec(row.csink_dia_max)} X ${angleText(row.csink_angle)}`;
   if (s.hole === 'blind') {
-    out.prep.push(`${q}DRILL ${drill} MIN DEPTH ${dec(row[depthCol])}`, csk, `TAP ${row.tap}`, `MIN FULL-THREAD DEPTH ${dec(row.min_full_thread_H)}`);
+    out.prep.push(`${q}DRILL ${drill} ${SYM.depth}${dec(row[depthCol])} MIN`, csk, `TAP ${row.tap} ${SYM.depth}${dec(row.min_full_thread_H)} MIN FULL THREAD`);
   } else {
     out.prep.push(`${q}DRILL ${drill} THRU`, csk, `TAP ${row.tap} THRU`);
   }
@@ -193,14 +247,14 @@ function computeInsert(s, data, mat, T, validT, q, sideWord, out) {
     kind: 'insert', T, hole: s.hole, P: 1 / tg.tpi, D: tg.D, drill: drillDecimal(row[drillCol]), drillLabel: drill,
     depth: num(row[depthCol]), depthLabel: dec(row[depthCol]), H: num(row.min_full_thread_H), HLabel: dec(row.min_full_thread_H),
     Ln: num(row.nominal_length_Ln), LnLabel: dec(row.nominal_length_Ln), cskMin: num(row.csink_dia_min), cskMax: num(row.csink_dia_max),
-    cskLabel: `${dec(row.csink_dia_min)}-${dec(row.csink_dia_max)}`, side: s.side, tpi: tg.tpi,
+    cskLabel: `${SYM.dia}${dec(row.csink_dia_min)}-${dec(row.csink_dia_max)} X ${row.csink_angle.match(/^\s*[\d.]+/)?.[0] || '120'}${SYM.deg}`, side: s.side, tpi: tg.tpi,
   };
   out.details = [
     ['Current PN / CAGE', `${row.note_pn} / ${row.note_cage}`],
     ['Legacy PN / CAGE', `${row.legacy_pn} / ${row.legacy_cage}`],
     ['Insert nominal length Ln', `${dec(row.nominal_length_Ln)} (${num(row.length_dia_mult)}D)`],
     ['Tap minor dia (2B)', `${row.tap_minor_dia_min ? dec(row.tap_minor_dia_min) : 'n/a'} to ${dec(row.tap_minor_dia_max_2B)}`],
-    ['Countersink', `${dec(row.csink_dia_min)}-${dec(row.csink_dia_max)} dia, ${row.csink_angle}`],
+    ['Countersink', `${SYM.dia}${dec(row.csink_dia_min)}-${dec(row.csink_dia_max)}, ${angleText(row.csink_angle)} included angle`],
     ['Min drill depth, plug / bottoming tap', `${dec(row.min_drill_depth_plug_tap_FP)} / ${dec(row.min_drill_depth_bottoming_tap_FB)}`],
     ['Min full thread H', dec(row.min_full_thread_H)],
     ['Min thickness, thru hole (csk)', dec(row.min_flange_thk_thru_hole_csk)],
@@ -304,7 +358,9 @@ function computeNut(s, data, mat, T, validT, q, sideWord, out) {
     out.warnings.push({ text: `Shank A ${dec(row.shank_length_A)} is for sheet ${row.sheet_thk_min}-${row.sheet_thk_max || 'up'}; material is ${fmtThk(T)} in.`, actions: [{ label: `Use A ${dec(match.shank_length_A)} (matches thickness)`, patch: { len: match.shank_length_A } }] });
   }
   const { pn, cage } = pnFor(row, s);
-  out.prep.push(`${q}THRU ${row.hole_dia_in_sheet} ${row.hole_tol}`);
+  const hs = holeSize(row.hole_dia_in_sheet, row.hole_tol);
+  out.prep.push(`${q}${hs.text} THRU`);
+  if (hs.adjusted) out.info.push(`Spec hole limits are rounded inward to 3 places (${hs.limits}) so the callout stays inside the spec range.`);
   out.install.push('INSTALL SELF-CLINCHING NUT', `PN: ${pn}`, `CAGE: ${cage}`, sideWord);
   out.commercial = { pn: row.commercial_pem_pn, basis: row.commercial_pem_basis, hidden: false, isNotePN: row.commercial_only === 'Y' };
   const edge = row.min_edge_dist_spec || '';
@@ -315,7 +371,7 @@ function computeNut(s, data, mat, T, validT, q, sideWord, out) {
   const tg = THREAD_GEOM[s.thread];
   out.geom = {
     kind: 'nut', T, side: s.side, P: 1 / tg.tpi, D: tg.D, tpi: tg.tpi,
-    hole: num(row.hole_dia_in_sheet), holeLabel: row.hole_dia_in_sheet, C: num(row.body_dia_C), E: num(row.head_dia_E), Eh: num(row.head_thk_T),
+    hole: num(row.hole_dia_in_sheet), holeLabel: hs.text.split(' ')[0], C: num(row.body_dia_C), E: num(row.head_dia_E), Eh: num(row.head_thk_T),
     A: num(row.shank_length_A), ALabel: row.shank_length_A, ELabel: row.head_dia_E, EhLabel: row.head_thk_T,
   };
   out.details = [
@@ -324,8 +380,8 @@ function computeNut(s, data, mat, T, validT, q, sideWord, out) {
     ['Nut material', row.material],
     ['Max sheet hardness', `${row.max_sheet_hardness_HRB} HRB`],
     ['Sheet thickness range', row.commercial_only === 'Y' ? `${row.sheet_thk_min} min (PEM recommended)` : `${row.sheet_thk_min}-${row.sheet_thk_max || 'up'}`],
-    ['Hole in sheet', `${row.hole_dia_in_sheet} ${row.hole_tol}`],
-    ['Shank A / body C', `${row.shank_length_A} / ${row.body_dia_C}`],
+    ['Hole in sheet', `${hs.text} THRU`],
+    ['Shank A / body C', `${dec(row.shank_length_A)} / ${dec(row.body_dia_C)}`],
     ['Head E / T', `${row.head_dia_E} / ${row.head_thk_T}`],
     ['Min edge distance', edge || (row.min_edge_dist_vendor_ref ? `illegible in spec (PEM ref ${row.min_edge_dist_vendor_ref})` : 'illegible in spec')],
     row.commercial_only === 'Y'
@@ -363,7 +419,9 @@ function computeStud(s, data, mat, T, validT, q, sideWord, out) {
       actions: firstFit ? [{ label: `Use L ${firstFit.length_L}`, patch: { len: firstFit.length_L } }] : [] });
   }
   const { pn, cage } = pnFor(row, s);
-  out.prep.push(`${q}THRU ${row.hole_dia_in_sheet} ${row.hole_tol}`);
+  const hs = holeSize(row.hole_dia_in_sheet, row.hole_tol);
+  out.prep.push(`${q}${hs.text} THRU`);
+  if (hs.adjusted) out.info.push(`Spec hole limits are rounded inward to 3 places (${hs.limits}) so the callout stays inside the spec range.`);
   out.install.push('INSTALL SELF-CLINCHING STUD', `PN: ${pn}`, `CAGE: ${cage}`, `${sideWord} FLUSH`);
   out.commercial = { pn: row.commercial_pem_pn, basis: row.commercial_pem_basis, hidden: false, isNotePN: row.commercial_only === 'Y' };
   const edge = row.min_edge_dist_spec || '';
@@ -378,7 +436,7 @@ function computeStud(s, data, mat, T, validT, q, sideWord, out) {
   const tg = THREAD_GEOM[s.thread];
   out.geom = {
     kind: 'stud', T, side: s.side, P: 1 / tg.tpi, D: tg.D, tpi: tg.tpi,
-    hole: num(row.hole_dia_in_sheet), holeLabel: row.hole_dia_in_sheet, headD: num(row.head_dia), S: num(row.unthreaded_S_max), SLabel: row.unthreaded_S_max, minSheet: num(row.min_sheet_thk),
+    hole: num(row.hole_dia_in_sheet), holeLabel: hs.text.split(' ')[0], headD: num(row.head_dia), S: num(row.unthreaded_S_max), SLabel: row.unthreaded_S_max, minSheet: num(row.min_sheet_thk),
     headDLabel: row.head_dia, L: num(row.length_L), LLabel: row.length_L,
   };
   out.details = [
@@ -388,7 +446,7 @@ function computeStud(s, data, mat, T, validT, q, sideWord, out) {
     ['Max sheet hardness', `${row.max_sheet_hardness_HRB} HRB`],
     ['Length L', `${row.length_L} ${row.length_tol} (${row.length_datum})`],
     ['Sheet thickness', row.sheet_thk_max ? `${row.min_sheet_thk}-${row.sheet_thk_max} (PEM)` : `${row.min_sheet_thk} min`],
-    ['Hole in sheet', `${row.hole_dia_in_sheet} ${row.hole_tol}`],
+    ['Hole in sheet', `${hs.text} THRU`],
     ['Head dia H', `${row.head_dia} ${row.head_dia_tol}`],
     ['Unthreaded length S (max, from head face)', row.unthreaded_S_max],
     ['Min edge distance', edge || `not legible in spec (PEM ref ${row.min_edge_dist_vendor_ref})`],
@@ -406,6 +464,6 @@ export function encodeState(s) {
 export function decodeState(str) {
   const p = new URLSearchParams(str.replace(/^#/, ''));
   const s = {};
-  for (const k of KEYS) if (p.has(k)) s[k] = k === 'cskAngle' ? p.get(k) === 'true' : p.get(k);
+  for (const k of KEYS) if (p.has(k)) s[k] = p.get(k);
   return s;
 }
