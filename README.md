@@ -5,15 +5,17 @@ Static web app (GitHub Pages ready) that builds ASME Y14.5-style drawing notes a
 - Helical threaded inserts: MS21208 (inactive) replaced by MS122xxx / MS124xxx per NASM33537
 - Self-clinching nuts: M45938/1 (MIL-N-45938/1B, now NASM45938/1)
 - Self-clinching flush-head studs: M63540/1 (MIL-S-63540/1A, now NASM63540/1)
+- Stainless-sheet clinch hardware with no mil PN (commercial only): PEM SP nuts and PEM FH4 studs, used for A304
 
-Threads in v1: 4-40, 8-32, 10-32, 1/4-20. Substrates: 5052-H32, 6061-T6, A304 (annealed).
+Threads in v1: 4-40, 8-32, 10-32, 1/4-20. Substrates: 5052-H32, 6061-T6, A304 (annealed), A1008 CS Type B.
 
 ## How it works
 - Every value printed in a note comes straight from a CSV row in `data/`. Nothing is computed into the note.
 - Selections that break a spec rule are flagged, with one-click fixes, but still allowed.
 - Blind insert holes must keep MIN DEPTH plus the 118 deg drill point inside the material.
-- Clinch hardware material is auto-picked from substrate hardness (CRES, then carbon steel, then aluminum). A304 exceeds every clinch limit, so the app recommends an insert.
-- The commercial PEM part number is shown grayed out for reference only and is never copied into the note.
+- Clinch hardware is CRES only. Carbon steel and aluminum rows stay in the CSVs as a spec record but the app never offers them.
+- Auto-select uses mil CRES whenever it is rated for the substrate. A304 exceeds the mil CRES limits, so the app uses PEM FH4 studs (rated to 92 HRB) and PEM SP nuts (rated to 90 HRB, with a warning to confirm sheet hardness). These print the PEM PN and CAGE 46384 and are tagged "Commercial PN, no mil equivalent".
+- For mil parts, the equivalent commercial PEM part number is shown grayed out for reference only and is never copied into the note.
 - The selection lives in the URL hash, so a link reproduces a note.
 
 ## Run locally
