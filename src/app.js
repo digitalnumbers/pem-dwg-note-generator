@@ -1,5 +1,5 @@
-import { APP_VERSION, THREADS, MATERIALS, HW_MAT_LABEL, DEFAULT_STATE, parseCSV, compute, encodeState, decodeState, stdThicknesses, stdName, dec } from './logic.js?v=1.4.1';
-import { drawSection, VB_W } from './drawing.js?v=1.4.1';
+import { APP_VERSION, THREADS, MATERIALS, HW_MAT_LABEL, DEFAULT_STATE, parseCSV, compute, encodeState, decodeState, stdThicknesses, stdName, dec } from './logic.js?v=1.4.2';
+import { drawSection, VB_W } from './drawing.js?v=1.4.2';
 
 const $ = id => document.getElementById(id);
 const form = $('form');
@@ -38,6 +38,7 @@ async function init() {
   $('copy-link').addEventListener('click', () => copy(location.href, 'Link copied'));
   $('dl-svg').addEventListener('click', downloadSVG);
   $('dl-png').addEventListener('click', downloadPNG);
+  initThkCombo();
   new ResizeObserver(updateScale).observe(document.querySelector('.gfx-wrap'));
 }
 
@@ -101,14 +102,89 @@ function fillSelects(o) {
 function fillThkStd(m, o) {
   const list = stdThicknesses(m);
   const key = m ? m.material : '';
-  const dl = $('thk-std');
-  if (dl.dataset.mat !== key) { dl.dataset.mat = key; dl.innerHTML = list.map(x => `<option value="${x.value}">${esc(dec(x.value) + ' ' + stdName(x))}</option>`).join(''); }
+  const ul = $('thk-list');
+  if (ul.dataset.mat !== key) {
+    ul.dataset.mat = key;
+    ul.innerHTML = list.length
+      ? list.map((x, i) => `<li role="option" id="thk-opt-${i}" data-thk="${x.value}" aria-selected="false"><span class="v">${esc(dec(x.value))}</span><span class="n">${esc(stdName(x))}</span></li>`).join('')
+      : `<li class="empty" aria-disabled="true">No standard thicknesses on file for this material. Type a value.</li>`;
+  }
+  markThkSelected();
   const h = $('thk-hint'), st = o.thkStd;
   if (!list.length || !st) { h.innerHTML = ''; return; }
   if (st.match) { h.textContent = `Standard ${m.material} stock: ${dec(st.match.value)} (${stdName(st.match)})`; return; }
   const btn = x => `<button type="button" class="snap" data-thk="${x.value}">${esc(dec(x.value) + ' ' + stdName(x))}</button>`;
   h.innerHTML = `Not a standard ${esc(m.material)} stock thickness.${st.below || st.above ? ' Nearest: ' + [st.below, st.above].filter(Boolean).map(btn).join(' ') : ''}`;
   h.querySelectorAll('button.snap').forEach(b => b.addEventListener('click', () => { state.thk = b.dataset.thk; if (state.len !== 'auto') state.len = 'auto'; writeForm(); update(); }));
+}
+
+// ---------------------------------------------------------------- thickness combobox
+// The arrow always opens the full standard list for the material (unlike a native datalist,
+// which filters by what is typed). The input stays free-entry for custom thicknesses.
+let thkActive = -1;
+const thkOpts = () => [...$('thk-list').querySelectorAll('li[role="option"]')];
+function markThkSelected() {
+  const T = parseFloat(state.thk);
+  thkOpts().forEach(li => {
+    const sel = Number.isFinite(T) && Math.abs(parseFloat(li.dataset.thk) - T) <= 0.0005 + 1e-9;
+    li.setAttribute('aria-selected', sel ? 'true' : 'false');
+  });
+}
+function setThkActive(i) {
+  const opts = thkOpts();
+  opts.forEach(li => li.classList.remove('active'));
+  thkActive = opts.length ? Math.max(0, Math.min(opts.length - 1, i)) : -1;
+  const li = opts[thkActive];
+  if (li) { li.classList.add('active'); li.scrollIntoView({ block: 'nearest' }); $('thk').setAttribute('aria-activedescendant', li.id); }
+  else $('thk').removeAttribute('aria-activedescendant');
+}
+function thkIsOpen() { return !$('thk-list').hidden; }
+function openThk() {
+  const ul = $('thk-list');
+  ul.hidden = false;
+  $('thk').setAttribute('aria-expanded', 'true'); $('thk-toggle').setAttribute('aria-expanded', 'true');
+  $('thk-combo').classList.add('open');
+  // Highlight the current value, else the nearest standard at or above it.
+  const opts = thkOpts(), T = parseFloat(state.thk);
+  let i = opts.findIndex(li => li.getAttribute('aria-selected') === 'true');
+  if (i < 0 && Number.isFinite(T)) { i = opts.findIndex(li => parseFloat(li.dataset.thk) >= T); if (i < 0) i = opts.length - 1; }
+  ul.scrollTop = 0;
+  setThkActive(i < 0 ? 0 : i);
+  if (opts[thkActive]) opts[thkActive].scrollIntoView({ block: 'center' });
+}
+function closeThk() {
+  $('thk-list').hidden = true;
+  $('thk').setAttribute('aria-expanded', 'false'); $('thk-toggle').setAttribute('aria-expanded', 'false');
+  $('thk').removeAttribute('aria-activedescendant');
+  $('thk-combo').classList.remove('open');
+  thkOpts().forEach(li => li.classList.remove('active'));
+}
+function pickThk(v) {
+  state.thk = v; if (state.len !== 'auto') state.len = 'auto';
+  $('thk').value = v;
+  closeThk(); writeForm(); update();
+}
+function initThkCombo() {
+  const inp = $('thk'), btn = $('thk-toggle'), ul = $('thk-list'), box = $('thk-combo');
+  btn.addEventListener('mousedown', e => e.preventDefault()); // keep focus in the input
+  btn.addEventListener('click', () => { if (thkIsOpen()) closeThk(); else { openThk(); inp.focus(); } });
+  ul.addEventListener('mousedown', e => e.preventDefault());
+  ul.addEventListener('click', e => { const li = e.target.closest('li[role="option"]'); if (li) pickThk(li.dataset.thk); });
+  ul.addEventListener('mousemove', e => { const li = e.target.closest('li[role="option"]'); if (li) { const i = thkOpts().indexOf(li); if (i !== thkActive) { thkOpts().forEach(o => o.classList.remove('active')); li.classList.add('active'); thkActive = i; } } });
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault(); // also stops the number input from stepping
+      if (!thkIsOpen() || e.altKey) { openThk(); return; }
+      setThkActive(thkActive + (e.key === 'ArrowDown' ? 1 : -1));
+    } else if (e.key === 'Enter' && thkIsOpen()) {
+      e.preventDefault(); const li = thkOpts()[thkActive]; if (li) pickThk(li.dataset.thk); else closeThk();
+    } else if (e.key === 'Escape' && thkIsOpen()) { e.preventDefault(); closeThk(); }
+    else if (e.key === 'Tab') closeThk();
+  });
+  inp.addEventListener('input', () => { if (thkIsOpen()) closeThk(); }); // typing = custom value
+  inp.addEventListener('wheel', e => { if (document.activeElement === inp) e.preventDefault(); }, { passive: false });
+  inp.addEventListener('blur', () => closeThk());
+  document.addEventListener('mousedown', e => { if (thkIsOpen() && !box.contains(e.target)) closeThk(); });
 }
 
 function update(pushHash = true) {
