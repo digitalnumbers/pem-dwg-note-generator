@@ -1,0 +1,4 @@
+material,family,hardness_HB,hardness_HRB,hardness_basis,insert_drill_column,m45938_carbon,m45938_cres,m45938_aluminum,m63540_carbon,m63540_cres,rule_note,sources
+5052-H32,aluminum,60,not published by sources,typical (vendor stock data),aluminum,OK,OK,OK,OK,OK,"60 HB is at/below PEM equivalence for 50 HRB (82 HB), so below every limit",S-GRAINGER; S-MCM; S-PEMFH (HRB/HB pairs)
+6061-T6,aluminum,95,60,typical (HRB converted from HB per source),aluminum,OK,OK,NO (60 > 50 HRB),OK,OK,60 HRB vs limits 85/70/50 (nuts) and 80/70 (studs),S-OM; S-45938; S-63540
+A304 (annealed),stainless steel,201 max,92 max,ASTM A240 maximum (actual heat may be lower),steel,NO (92 > 85 HRB),NO,NO,NO (92 > 80 HRB),NO,exceeds all clinch limits; app recommends helical insert (MS122xxx/MS124xxx),S-A240; S-45938; S-63540

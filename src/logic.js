@@ -1,0 +1,328 @@
+// Pure note/validation logic. No DOM access, so it runs in the browser and in Node tests.
+// Rule: every value printed in a note comes straight from a CSV row; nothing is computed into the note.
+
+export const APP_VERSION = '1.0.0';
+export const THREADS = ['4-40', '8-32', '10-32', '1/4-20'];
+export const MATERIALS = ['5052-H32', '6061-T6', 'A304 (annealed)'];
+
+// Basic thread geometry used only to draw the cross-section (never printed in a note).
+export const THREAD_GEOM = {
+  '4-40': { D: 0.112, tpi: 40 },
+  '8-32': { D: 0.164, tpi: 32 },
+  '10-32': { D: 0.190, tpi: 32 },
+  '1/4-20': { D: 0.250, tpi: 20 },
+};
+
+export const HW_MAT_LABEL = { cres: 'CRES', carbon: 'Carbon steel', aluminum: 'Aluminum' };
+
+// ---------------------------------------------------------------- CSV
+export function parseCSV(text) {
+  const rows = [];
+  let row = [], field = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; } else q = false;
+      } else field += c;
+    } else if (c === '"') q = true;
+    else if (c === ',') { row.push(field); field = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(field); field = '';
+      if (row.length > 1 || row[0] !== '') rows.push(row);
+      row = [];
+    } else field += c;
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  const head = rows.shift();
+  return rows.map(r => Object.fromEntries(head.map((h, i) => [h, r[i] ?? ''])));
+}
+
+// ---------------------------------------------------------------- formatting
+// Drafting decimal style: drop the leading zero (0.568 -> .568). Digits are kept exactly as stored.
+export function dec(v) {
+  const s = String(v).trim();
+  return s.startsWith('0.') ? s.slice(1) : s;
+}
+export function num(v) { return parseFloat(String(v).trim()); }
+const drillText = s => s.replace(/\(0\./, '(.'); // "#7 (0.2010)" -> "#7 (.2010)"
+export function drillDecimal(s) { const m = s.match(/\(([\d.]+)\)/); return m ? num(m[1]) : NaN; }
+
+export function hwMatKey(materialText) {
+  const t = materialText.toUpperCase();
+  if (t.startsWith('CRES')) return 'cres';
+  if (t.startsWith('CARBON')) return 'carbon';
+  if (t.startsWith('ALUMINUM')) return 'aluminum';
+  return '';
+}
+
+const CSK_SYMBOL = { text: 'CSINK', sw: '<MOD-CSK>', unicode: '\u2335' };
+
+export const DEFAULT_STATE = {
+  type: 'insert', material: '6061-T6', thk: '0.700', hole: 'blind', tap: 'plug',
+  thread: '10-32', qty: '4', len: 'auto', side: 'near', hwmat: 'auto',
+  pnmode: 'current', csk: 'text', cskAngle: false,
+};
+
+// ---------------------------------------------------------------- compute
+export function compute(state, data) {
+  const s = { ...DEFAULT_STATE, ...state };
+  const out = { state: s, warnings: [], info: [], prep: [], install: [], row: null, choices: [], geom: null, commercial: null, hwmatChosen: null, hwmatReason: '' };
+  const T = num(s.thk);
+  const qty = Math.max(1, parseInt(s.qty, 10) || 1);
+  const q = qty > 1 ? `${qty}X ` : '';
+  const mat = data.materials.find(m => m.material === s.material);
+  const sideWord = s.side === 'far' ? 'FAR SIDE' : 'NEAR SIDE';
+  const validT = Number.isFinite(T) && T > 0;
+  if (!validT) out.warnings.push({ text: 'Enter a material thickness greater than 0 in.', actions: [] });
+  if (String(s.qty).trim() === '' || !(parseInt(s.qty, 10) >= 1) || String(parseInt(s.qty, 10)) !== String(s.qty).trim()) {
+    out.warnings.push({ text: 'Quantity must be a whole number of 1 or more. Using ' + qty + '.', actions: [{ label: 'Set ' + qty, patch: { qty: String(qty) } }] });
+  }
+
+  if (s.type === 'insert') computeInsert(s, data, mat, T, validT, q, sideWord, out);
+  else if (s.type === 'nut') computeNut(s, data, mat, T, validT, q, sideWord, out);
+  else computeStud(s, data, mat, T, validT, q, sideWord, out);
+
+  out.nonCompliant = out.warnings.length > 0;
+  out.noteLines = [...out.prep, ...out.install];
+  out.noteText = out.noteLines.join('\n');
+  // Hole-prep block: hole lines plus the side line so it can be pasted on its own.
+  out.prepText = out.prep.length ? [...out.prep, out.install[out.install.length - 1]].join('\n') : '';
+  return out;
+}
+
+function pnFor(row, s) {
+  if (s.pnmode === 'legacy') return { pn: row.legacy_pn || row.note_pn, cage: row.legacy_cage };
+  return { pn: row.note_pn, cage: row.note_cage };
+}
+
+function computeInsert(s, data, mat, T, validT, q, sideWord, out) {
+  const rows = data.inserts.filter(r => r.thread === s.thread && r.in_app_scope === 'Y')
+    .sort((a, b) => num(a.length_dia_mult) - num(b.length_dia_mult));
+  if (!rows.length) { out.warnings.push({ text: `No confirmed insert data for ${s.thread}.`, actions: [] }); return; }
+  const drillCol = mat && mat.insert_drill_column === 'steel' ? 'drill_steel' : 'drill_aluminum';
+  const depthCol = s.tap === 'bottoming' ? 'min_drill_depth_bottoming_tap_FB' : 'min_drill_depth_plug_tap_FP';
+  // Blind-hole fit: the 118 deg drill point must stay inside the material. MIN DEPTH is the full-diameter
+  // depth (Y14.5), so the point extends (drill/2)/tan(59 deg) past it. Used for selection only, never printed.
+  const tip = r => num(r[depthCol]) + drillDecimal(r[drillCol]) / 2 / Math.tan(59 * Math.PI / 180);
+  const need = r => s.hole === 'thru' ? num(r.min_flange_thk_thru_hole_csk) : tip(r);
+  const fits = r => validT && (s.hole === 'thru' ? T >= need(r) : need(r) < T);
+  out.choices = rows.map(r => ({ value: r.length_dia_mult, label: `${num(r.length_dia_mult)}D  (${dec(r.nominal_length_Ln)} in)`, fits: fits(r) }));
+  const fitting = rows.filter(fits);
+  let row;
+  if (s.len === 'auto') {
+    row = fitting.length ? fitting[fitting.length - 1] : rows[0];
+  } else {
+    row = rows.find(r => r.length_dia_mult === s.len) || rows[0];
+  }
+  out.row = row;
+  out.autoLen = fitting.length ? fitting[fitting.length - 1].length_dia_mult : null;
+
+  if (validT && !fitting.length) {
+    const r0 = rows[0];
+    const req = need(r0);
+    const acts = [];
+    if (s.hole === 'blind' && T >= num(r0.min_flange_thk_thru_hole_csk)) acts.push({ label: 'Use thru hole', patch: { hole: 'thru', len: 'auto' } });
+    const sug = s.hole === 'thru' ? req : Math.ceil((req + 0.0005) * 1000) / 1000;
+    acts.push({ label: `Set thickness to ${dec(sug.toFixed(3))}`, patch: { thk: sug.toFixed(3), len: 'auto' } });
+    out.warnings.push({
+      text: s.hole === 'thru'
+        ? `No insert length fits ${dec(T.toFixed(3))} in. The shortest (1D) needs at least ${dec(r0.min_flange_thk_thru_hole_csk)} in for a countersunk thru hole.`
+        : `No insert length fits a blind hole in ${dec(T.toFixed(3))} in. The shortest (1D) needs MIN DEPTH ${dec(r0[depthCol])} plus the 118\u00b0 drill point, about ${dec(req.toFixed(3))} in, inside the material.`,
+      actions: acts,
+    });
+  } else if (validT && !fits(row)) {
+    const best = fitting[fitting.length - 1];
+    out.warnings.push({
+      text: s.hole === 'thru'
+        ? `${num(row.length_dia_mult)}D insert needs ${dec(row.min_flange_thk_thru_hole_csk)} in minimum thickness for a thru hole; material is ${dec(T.toFixed(3))} in.`
+        : num(row[depthCol]) < T
+          ? `${num(row.length_dia_mult)}D insert: at MIN DEPTH ${dec(row[depthCol])} the 118\u00b0 drill point reaches about ${dec(tip(row).toFixed(3))} in and breaks through the ${dec(T.toFixed(3))} in material.`
+          : `${num(row.length_dia_mult)}D insert MIN DEPTH ${dec(row[depthCol])} in does not fit in ${dec(T.toFixed(3))} in.`,
+      actions: [
+        ...(best ? [{ label: `Use ${num(best.length_dia_mult)}D (longest that fits)`, patch: { len: best.length_dia_mult } }] : []),
+        ...(s.hole === 'blind' && s.tap === 'plug' && validT && (num(row.min_drill_depth_bottoming_tap_FB) + tip(row) - num(row[depthCol])) < T ? [{ label: 'Keep length, use bottoming tap', patch: { tap: 'bottoming' } }] : []),
+        ...(s.hole === 'blind' && T >= num(row.min_flange_thk_thru_hole_csk) ? [{ label: 'Keep length, make thru hole', patch: { hole: 'thru' } }] : []),
+      ],
+    });
+  }
+
+  const { pn, cage } = pnFor(row, s);
+  const drill = drillText(row[drillCol]);
+  const csk = `${CSK_SYMBOL[s.csk] || 'CSINK'} ${dec(row.csink_dia_min)}-${dec(row.csink_dia_max)}${s.cskAngle ? ' X 120\u00b0' : ''}`;
+  if (s.hole === 'blind') {
+    out.prep.push(`${q}DRILL ${drill} MIN DEPTH ${dec(row[depthCol])}`, csk, `TAP ${row.tap}`, `MIN FULL-THREAD DEPTH ${dec(row.min_full_thread_H)}`);
+  } else {
+    out.prep.push(`${q}DRILL ${drill} THRU`, csk, `TAP ${row.tap} THRU`);
+  }
+  out.install.push('INSTALL THREADED INSERT', 'BREAK TANG', `PN: ${pn}`, `CAGE: ${cage}`, sideWord);
+  out.commercial = { pn: row.commercial_pem_pn, basis: row.commercial_pem_basis, hidden: true };
+  if (s.hole === 'blind' && validT) out.info.push(`MIN DEPTH is to full drill diameter. The 118\u00b0 point reaches about ${dec(tip(row).toFixed(3))} in, leaving about ${dec(Math.max(0, T - tip(row)).toFixed(3))} in of material below the point at minimum depth.`);
+  out.info.push(`Drill from the ${drillCol === 'drill_steel' ? 'steel' : 'aluminum'} column for ${s.material}.`);
+  const tg = THREAD_GEOM[s.thread];
+  out.geom = {
+    kind: 'insert', T, hole: s.hole, P: 1 / tg.tpi, D: tg.D, drill: drillDecimal(row[drillCol]), drillLabel: drill,
+    depth: num(row[depthCol]), depthLabel: dec(row[depthCol]), H: num(row.min_full_thread_H), HLabel: dec(row.min_full_thread_H),
+    Ln: num(row.nominal_length_Ln), LnLabel: dec(row.nominal_length_Ln), cskMin: num(row.csink_dia_min), cskMax: num(row.csink_dia_max),
+    cskLabel: `${dec(row.csink_dia_min)}-${dec(row.csink_dia_max)}`, side: s.side, tpi: tg.tpi,
+  };
+  out.details = [
+    ['Current PN / CAGE', `${row.note_pn} / ${row.note_cage}`],
+    ['Legacy PN / CAGE', `${row.legacy_pn} / ${row.legacy_cage}`],
+    ['Insert nominal length Ln', `${dec(row.nominal_length_Ln)} (${num(row.length_dia_mult)}D)`],
+    ['Tap minor dia (2B)', `${row.tap_minor_dia_min ? dec(row.tap_minor_dia_min) : 'n/a'} to ${dec(row.tap_minor_dia_max_2B)}`],
+    ['Countersink', `${dec(row.csink_dia_min)}-${dec(row.csink_dia_max)} dia, ${row.csink_angle}`],
+    ['Min drill depth, plug / bottoming tap', `${dec(row.min_drill_depth_plug_tap_FP)} / ${dec(row.min_drill_depth_bottoming_tap_FB)}`],
+    ['Min full thread H', dec(row.min_full_thread_H)],
+    ['Min thickness, thru hole (csk)', dec(row.min_flange_thk_thru_hole_csk)],
+    ['Insert set-down with csk', row.insert_setdown_with_csk + ' in'],
+    ['Drill, aluminum / steel', `${drillText(row.drill_aluminum)} / ${drillText(row.drill_steel)}`],
+  ];
+}
+
+function pickHwMat(s, mat, family, available) {
+  // family: 'm45938' or 'm63540'. Preference order when auto: CRES, carbon steel, aluminum.
+  const order = ['cres', 'carbon', 'aluminum'].filter(k => available.includes(k));
+  const ok = k => mat && String(mat[`${family}_${k}`] || '').startsWith('OK');
+  if (s.hwmat !== 'auto' && available.includes(s.hwmat)) return { key: s.hwmat, auto: false, ok: ok(s.hwmat) };
+  const first = order.find(ok);
+  if (first) return { key: first, auto: true, ok: true };
+  return { key: order[0], auto: true, ok: false };
+}
+
+function hardnessText(mat) {
+  if (!mat) return '';
+  const hrb = /^\d/.test(mat.hardness_HRB) ? `${mat.hardness_HRB} HRB` : '';
+  return [hrb, mat.hardness_HB ? `${mat.hardness_HB} HB` : ''].filter(Boolean).join(' / ');
+}
+
+function hardnessWarning(s, mat, family, pick, rowLimit, out) {
+  if (pick.ok) return;
+  const fam = family === 'm45938' ? 'nut' : 'stud';
+  const anyOk = ['cres', 'carbon', 'aluminum'].some(k => String(mat?.[`${family}_${k}`] || '').startsWith('OK'));
+  const acts = [];
+  if (anyOk && !pick.auto) acts.push({ label: 'Auto-select hardware material', patch: { hwmat: 'auto' } });
+  if (!anyOk) acts.push({ label: 'Use threaded insert instead', patch: { type: 'insert', len: 'auto', hwmat: 'auto' } });
+  out.warnings.push({
+    text: `${HW_MAT_LABEL[pick.key]} ${fam}s are rated for sheet up to ${rowLimit} HRB. ${s.material} is ${hardnessText(mat)}${mat?.hardness_basis?.includes('maximum') ? ' (spec maximum)' : ''}.` +
+      (anyOk ? '' : ` No ${fam} variant in this spec suits ${s.material}; a helical insert is recommended.`),
+    actions: acts,
+  });
+}
+
+function computeNut(s, data, mat, T, validT, q, sideWord, out) {
+  const all = data.nuts.filter(r => r.thread === s.thread && r.in_app_scope === 'Y');
+  if (!all.length) { out.warnings.push({ text: `No confirmed nut data for ${s.thread}.`, actions: [] }); return; }
+  const avail = [...new Set(all.map(r => hwMatKey(r.material)))];
+  const pick = pickHwMat(s, mat, 'm45938', avail);
+  out.hwmatChosen = pick.key; out.hwmatAvail = avail;
+  const rows = all.filter(r => hwMatKey(r.material) === pick.key).sort((a, b) => num(a.shank_length_A) - num(b.shank_length_A));
+  const inRange = r => validT && T >= num(r.sheet_thk_min) && (r.sheet_thk_max === '' || T <= num(r.sheet_thk_max));
+  out.choices = rows.map(r => ({ value: r.shank_length_A, label: `A ${dec(r.shank_length_A)}  (sheet ${r.sheet_thk_min}-${r.sheet_thk_max || 'up'})`, fits: inRange(r) }));
+  const match = rows.find(inRange);
+  let row = s.len === 'auto' ? (match || rows[0]) : (rows.find(r => r.shank_length_A === s.len) || match || rows[0]);
+  if (s.len === 'auto' && !match && validT) row = T < num(rows[0].sheet_thk_min) ? rows[0] : rows[rows.length - 1];
+  out.row = row; out.autoLen = match ? match.shank_length_A : null;
+  out.hwmatReason = pick.ok
+    ? `${pick.auto ? 'Auto: ' : ''}${HW_MAT_LABEL[pick.key]} (rated to ${row.max_sheet_hardness_HRB} HRB; ${s.material} ${hardnessText(mat)})`
+    : `${HW_MAT_LABEL[pick.key]} not rated for ${s.material}`;
+  hardnessWarning(s, mat, 'm45938', pick, row.max_sheet_hardness_HRB, out);
+
+  if (validT && !match) {
+    const minT = num(rows[0].sheet_thk_min);
+    if (T < minT) out.warnings.push({ text: `${dec(T.toFixed(3))} in is below the minimum sheet thickness (${rows[0].sheet_thk_min}) for ${HW_MAT_LABEL[pick.key]} ${s.thread} nuts.`, actions: [{ label: `Set thickness to ${rows[0].sheet_thk_min}`, patch: { thk: '0' + rows[0].sheet_thk_min, len: 'auto' } }] });
+  } else if (validT && !inRange(row)) {
+    out.warnings.push({ text: `Shank A ${dec(row.shank_length_A)} is for sheet ${row.sheet_thk_min}-${row.sheet_thk_max || 'up'}; material is ${dec(T.toFixed(3))} in.`, actions: [{ label: `Use A ${dec(match.shank_length_A)} (matches thickness)`, patch: { len: match.shank_length_A } }] });
+  }
+  const { pn, cage } = pnFor(row, s);
+  out.prep.push(`${q}THRU ${row.hole_dia_in_sheet} ${row.hole_tol}`);
+  out.install.push('INSTALL SELF-CLINCHING NUT', `PN: ${pn}`, `CAGE: ${cage}`, sideWord);
+  out.commercial = { pn: row.commercial_pem_pn, basis: row.commercial_pem_basis, hidden: false };
+  const edge = row.min_edge_dist_spec || '';
+  out.info.push(edge ? `Minimum hole center to sheet edge: ${edge} (spec).` : `Minimum edge distance is illegible in the spec scan${row.min_edge_dist_vendor_ref ? `; PEM reference value ${row.min_edge_dist_vendor_ref} (not from spec)` : ''}.`);
+  out.info.push('Install the mating screw from the shank (pilot) side of the nut.');
+  const tg = THREAD_GEOM[s.thread];
+  out.geom = {
+    kind: 'nut', T, side: s.side, P: 1 / tg.tpi, D: tg.D, tpi: tg.tpi,
+    hole: num(row.hole_dia_in_sheet), holeLabel: row.hole_dia_in_sheet, C: num(row.body_dia_C), E: num(row.head_dia_E), Eh: num(row.head_thk_T),
+    A: num(row.shank_length_A), ALabel: row.shank_length_A, ELabel: row.head_dia_E, EhLabel: row.head_thk_T,
+  };
+  out.details = [
+    ['PN / CAGE (current)', `${row.note_pn} / ${row.note_cage}`],
+    ['Legacy CAGE', row.legacy_cage],
+    ['Nut material', row.material],
+    ['Max sheet hardness', `${row.max_sheet_hardness_HRB} HRB`],
+    ['Sheet thickness range', `${row.sheet_thk_min}-${row.sheet_thk_max || 'up'}`],
+    ['Hole in sheet', `${row.hole_dia_in_sheet} ${row.hole_tol}`],
+    ['Shank A / body C', `${row.shank_length_A} / ${row.body_dia_C}`],
+    ['Head E / T', `${row.head_dia_E} / ${row.head_thk_T}`],
+    ['Min edge distance', edge || (row.min_edge_dist_vendor_ref ? `illegible in spec (PEM ref ${row.min_edge_dist_vendor_ref})` : 'illegible in spec')],
+    ['Install force (approx) / push-out / torque-out', `${row.approx_install_force_lb} lb / ${row.pushout_min_lb} lb / ${row.torqueout_min_inlb} in-lb`],
+  ];
+}
+
+function computeStud(s, data, mat, T, validT, q, sideWord, out) {
+  const all = data.studs.filter(r => r.thread === s.thread && r.in_app_scope === 'Y');
+  if (!all.length) { out.warnings.push({ text: `No confirmed stud data for ${s.thread}.`, actions: [] }); return; }
+  const avail = [...new Set(all.map(r => hwMatKey(r.material)))];
+  const pick = pickHwMat(s, mat, 'm63540', avail);
+  out.hwmatChosen = pick.key; out.hwmatAvail = avail;
+  const rows = all.filter(r => hwMatKey(r.material) === pick.key).sort((a, b) => num(a.length_L) - num(b.length_L));
+  const protrudes = r => validT && num(r.length_L) > T;
+  out.choices = rows.map(r => ({ value: r.length_L, label: `L ${r.length_L}${validT ? `  (protrudes ${dec((num(r.length_L) - T).toFixed(3))})` : ''}`, fits: protrudes(r) }));
+  const firstFit = rows.find(protrudes);
+  let row = s.len === 'auto' ? (firstFit || rows[rows.length - 1]) : (rows.find(r => r.length_L === s.len) || firstFit || rows[0]);
+  out.row = row; out.autoLen = firstFit ? firstFit.length_L : null;
+  out.hwmatReason = pick.ok
+    ? `${pick.auto ? 'Auto: ' : ''}${HW_MAT_LABEL[pick.key]} (rated to ${row.max_sheet_hardness_HRB} HRB; ${s.material} ${hardnessText(mat)})`
+    : `${HW_MAT_LABEL[pick.key]} not rated for ${s.material}`;
+  hardnessWarning(s, mat, 'm63540', pick, row.max_sheet_hardness_HRB, out);
+  if (validT && T < num(row.min_sheet_thk)) {
+    out.warnings.push({ text: `${dec(T.toFixed(3))} in is below the minimum sheet thickness (${row.min_sheet_thk}) for ${s.thread} studs.`, actions: [{ label: `Set thickness to ${row.min_sheet_thk}`, patch: { thk: '0' + row.min_sheet_thk } }] });
+  }
+  if (validT && !protrudes(row)) {
+    out.warnings.push({ text: `Stud length L ${row.length_L} does not protrude past ${dec(T.toFixed(3))} in sheet (L is measured from the flush head face).`,
+      actions: firstFit ? [{ label: `Use L ${firstFit.length_L}`, patch: { len: firstFit.length_L } }] : [] });
+  }
+  const { pn, cage } = pnFor(row, s);
+  out.prep.push(`${q}THRU ${row.hole_dia_in_sheet} ${row.hole_tol}`);
+  out.install.push('INSTALL SELF-CLINCHING STUD', `PN: ${pn}`, `CAGE: ${cage}`, `${sideWord} FLUSH`);
+  out.commercial = { pn: row.commercial_pem_pn, basis: row.commercial_pem_basis, hidden: false };
+  const edge = row.min_edge_dist_spec || '';
+  out.info.push(edge ? `Minimum hole center to sheet edge: ${edge} (spec).` : `Minimum edge distance is not legible in the spec${row.min_edge_dist_vendor_ref ? `; PEM reference value ${row.min_edge_dist_vendor_ref} (not from spec)` : ''}.`);
+  out.info.push(`Mating nut tightening torque: ${row.nut_tightening_torque_max_inlb} in-lb max.`);
+  const tg = THREAD_GEOM[s.thread];
+  out.geom = {
+    kind: 'stud', T, side: s.side, P: 1 / tg.tpi, D: tg.D, tpi: tg.tpi,
+    hole: num(row.hole_dia_in_sheet), holeLabel: row.hole_dia_in_sheet, headD: num(row.head_dia), S: num(row.unthreaded_S_max), SLabel: row.unthreaded_S_max, minSheet: num(row.min_sheet_thk),
+    headDLabel: row.head_dia, L: num(row.length_L), LLabel: row.length_L,
+  };
+  out.details = [
+    ['PN / CAGE (current)', `${row.note_pn} / ${row.note_cage}`],
+    ['Legacy CAGE', row.legacy_cage],
+    ['Stud material', row.material],
+    ['Max sheet hardness', `${row.max_sheet_hardness_HRB} HRB`],
+    ['Length L', `${row.length_L} ${row.length_tol} (${row.length_datum})`],
+    ['Min sheet thickness', row.min_sheet_thk],
+    ['Hole in sheet', `${row.hole_dia_in_sheet} ${row.hole_tol}`],
+    ['Head dia H', `${row.head_dia} ${row.head_dia_tol}`],
+    ['Unthreaded length S (max, from head face)', row.unthreaded_S_max],
+    ['Min edge distance', edge || `not legible in spec (PEM ref ${row.min_edge_dist_vendor_ref})`],
+    ['Protrusion past far face', validT ? dec((num(row.length_L) - T).toFixed(3)) : 'n/a'],
+  ];
+}
+
+// ---------------------------------------------------------------- URL state
+const KEYS = Object.keys(DEFAULT_STATE);
+export function encodeState(s) {
+  const p = new URLSearchParams();
+  for (const k of KEYS) if (String(s[k]) !== String(DEFAULT_STATE[k])) p.set(k, String(s[k]));
+  return p.toString();
+}
+export function decodeState(str) {
+  const p = new URLSearchParams(str.replace(/^#/, ''));
+  const s = {};
+  for (const k of KEYS) if (p.has(k)) s[k] = k === 'cskAngle' ? p.get(k) === 'true' : p.get(k);
+  return s;
+}

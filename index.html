@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PEM DWG Note Generator</title>
+<meta name="description" content="Generate ASME Y14.5-style drawing notes and to-scale cross sections for MS122/MS124 helical inserts, M45938/1 clinch nuts and M63540/1 flush-head studs.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=JetBrains+Mono:wght@400..700&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231d4f8f%22/%3E%3Cpath d=%22M8 10h16M8 16h16M8 22h10%22 stroke=%22white%22 stroke-width=%222.5%22/%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-name">PEM DWG Note Generator</span>
+    <span class="brand-sub">Drawing notes for self-clinching hardware and helical inserts</span>
+  </div>
+  <nav class="topnav" aria-label="Data and specs">
+    <a href="#data">Data</a>
+    <a href="#about">About</a>
+  </nav>
+</header>
+
+<main id="main" class="layout">
+  <!-- INPUTS -->
+  <section class="panel inputs" aria-labelledby="in-h">
+    <h2 id="in-h" class="panel-title">Selection</h2>
+    <form id="form" autocomplete="off" novalidate>
+      <fieldset class="field">
+        <legend>Hardware type</legend>
+        <div class="seg" role="radiogroup">
+          <label><input type="radio" name="type" value="insert"><span>Threaded insert</span></label>
+          <label><input type="radio" name="type" value="nut"><span>Clinch nut</span></label>
+          <label><input type="radio" name="type" value="stud"><span>Clinch stud</span></label>
+        </div>
+        <p class="hint" id="type-spec"></p>
+      </fieldset>
+
+      <div class="field">
+        <label for="material">Substrate material</label>
+        <select id="material" name="material"></select>
+        <p class="hint" id="mat-hint"></p>
+      </div>
+
+      <div class="field two">
+        <div>
+          <label for="thk">Thickness</label>
+          <div class="unit-input"><input id="thk" name="thk" type="number" inputmode="decimal" step="0.001" min="0"><span>in</span></div>
+        </div>
+        <div>
+          <label for="units">Units</label>
+          <select id="units" disabled title="Unit selection will be added later"><option>inch</option><option>mm (later)</option></select>
+        </div>
+      </div>
+
+      <fieldset class="field" data-for="insert">
+        <legend>Hole</legend>
+        <div class="seg" role="radiogroup">
+          <label><input type="radio" name="hole" value="blind"><span>Blind</span></label>
+          <label><input type="radio" name="hole" value="thru"><span>Thru</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset class="field" data-for="insert-blind">
+        <legend>Tap type (sets drill depth)</legend>
+        <div class="seg" role="radiogroup">
+          <label><input type="radio" name="tap" value="plug"><span>Plug</span></label>
+          <label><input type="radio" name="tap" value="bottoming"><span>Bottoming</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset class="field">
+        <legend>Thread</legend>
+        <div class="seg seg-4" role="radiogroup" id="threads"></div>
+      </fieldset>
+
+      <div class="field" data-for="clinch">
+        <label for="hwmat">Hardware material</label>
+        <select id="hwmat" name="hwmat"></select>
+        <p class="hint" id="hwmat-hint"></p>
+      </div>
+
+      <div class="field">
+        <label for="len" id="len-label">Length</label>
+        <select id="len" name="len"></select>
+        <p class="hint" id="len-hint"></p>
+      </div>
+
+      <div class="field two">
+        <div>
+          <label for="qty">Quantity</label>
+          <input id="qty" name="qty" type="number" inputmode="numeric" min="1" step="1">
+        </div>
+        <fieldset class="field-inner">
+          <legend>Side</legend>
+          <div class="seg" role="radiogroup">
+            <label><input type="radio" name="side" value="near"><span>Near</span></label>
+            <label><input type="radio" name="side" value="far"><span>Far</span></label>
+          </div>
+        </fieldset>
+      </div>
+
+      <details class="opts">
+        <summary>Note options</summary>
+        <div class="field">
+          <label for="pnmode">Part number</label>
+          <select id="pnmode" name="pnmode">
+            <option value="current">Current mil PN, CAGE 80205</option>
+            <option value="legacy">Legacy PN and CAGE</option>
+          </select>
+        </div>
+        <div class="field" data-for="insert">
+          <label for="csk">Countersink symbol</label>
+          <select id="csk" name="csk">
+            <option value="text">CSINK (plain text)</option>
+            <option value="sw">SolidWorks tag &lt;MOD-CSK&gt; (unverified)</option>
+            <option value="unicode">Unicode &#x2335;</option>
+          </select>
+          <label class="check"><input type="checkbox" id="cskAngle" name="cskAngle"> Add countersink angle (X 120&deg;)</label>
+        </div>
+      </details>
+      <button type="button" class="btn-ghost" id="reset">Reset to defaults</button>
+    </form>
+  </section>
+
+  <!-- NOTE -->
+  <section class="panel note-panel" aria-labelledby="note-h">
+    <div class="panel-head">
+      <h2 id="note-h" class="panel-title">Drawing note</h2>
+      <span class="flag" id="flag" hidden>Non-compliant selection</span>
+    </div>
+    <pre class="note" id="note" aria-live="polite"></pre>
+    <div class="copy-row">
+      <button type="button" class="btn" id="copy">Copy note</button>
+      <button type="button" class="btn-ghost" id="copy-prep">Copy hole prep only</button>
+      <button type="button" class="btn-ghost" id="copy-link">Copy link</button>
+      <span class="toast" id="toast" role="status"></span>
+    </div>
+    <p class="commercial" id="commercial" tabindex="0"></p>
+    <div id="warnings" class="warnings"></div>
+    <ul id="info" class="info" role="list"></ul>
+    <details class="spec" open>
+      <summary>Spec values for this selection</summary>
+      <dl id="details" class="details"></dl>
+      <p class="sources-title">Sources</p>
+      <ul id="sources" class="sources" role="list"></ul>
+    </details>
+  </section>
+
+  <!-- GRAPHIC -->
+  <section class="panel graphic-panel" aria-labelledby="gfx-h">
+    <div class="panel-head">
+      <h2 id="gfx-h" class="panel-title">Cross section</h2>
+      <span class="scale" id="scale"></span>
+    </div>
+    <div class="gfx-wrap"><svg id="gfx" viewBox="0 0 760 560" role="img" aria-labelledby="gfx-title"><title id="gfx-title">Cross section</title></svg></div>
+    <div class="copy-row">
+      <button type="button" class="btn-ghost" id="dl-svg">Download SVG</button>
+      <button type="button" class="btn-ghost" id="dl-png">Download PNG</button>
+    </div>
+    <p class="hint">Drawn to true scale. Thread pitch, hole, countersink and hardware sizes come from the spec row; thread profiles are illustrative.</p>
+  </section>
+</main>
+
+<footer class="foot">
+  <section id="data" class="foot-col">
+    <h2 class="foot-h">Data (CSV)</h2>
+    <ul role="list" class="foot-list">
+      <li><a href="data/hardware_ms21208.csv" download>hardware_ms21208.csv</a> helical inserts, MS122xxx / MS124xxx</li>
+      <li><a href="data/hardware_m45938_1.csv" download>hardware_m45938_1.csv</a> clinch nuts</li>
+      <li><a href="data/hardware_m63540_1.csv" download>hardware_m63540_1.csv</a> flush-head studs</li>
+      <li><a href="data/materials.csv" download>materials.csv</a> and <a href="data/sources.csv" download>sources.csv</a></li>
+    </ul>
+  </section>
+  <section id="about" class="foot-col">
+    <h2 class="foot-h">Spec revisions</h2>
+    <p>NASM33537 (insert assembly dimensions; replaces MS33537E). MS21208B, inactive for new design. MIL-N-45938/1B, superseded by NASM45938/1. MIL-S-63540/1A, superseded by NASM63540/1. Stud length L follows the PEM flush-head datum.</p>
+    <p class="disclaimer">Drafting aid only. Verify every note against the current governing specification before release.</p>
+    <p class="ver" id="ver"></p>
+  </section>
+</footer>
+<script type="module" src="src/app.js"></script>
+</body>
+</html>
