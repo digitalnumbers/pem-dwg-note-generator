@@ -14,8 +14,16 @@ S-GRAINGER,"Grainger 5052-H32 sheet, 60 HB",https://www.grainger.com/product/Alu
 S-MCM,"McMaster-Carr H32 temper aluminum, Brinell 60",https://www.mcmaster.com/products/h32-temper-aluminum
 S-OM,"Online Metals 6061-T6 sheet, HB 95 / HRB 60",https://www.onlinemetals.com/en/buy/aluminum/0-05-aluminum-sheet-6061-t6/pid/1241
 S-A240,ASTM A240 304 hardness max 201 HBW / 92 HRB (summary),https://www.relinox.com/standards/astm-a240/
-S-A1008,"ASTM A1008/A1008M-21a Table X3.1 Typical Hardness Values (nonmandatory appendix): CS Type A/B/C 70 HRB or less",https://www.scribd.com/document/752479507/A1008-A1008M-21a
+S-A1008,ASTM A1008/A1008M-21a Table X3.1 Typical Hardness Values (nonmandatory appendix): CS Type A/B/C 70 HRB or less,https://www.scribd.com/document/752479507/A1008-A1008M-21a
 S-MVS,"Miami Valley Steel Steel 101: A1008 CS Type B, 65 Rb max (vendor reference)",https://www.miamivalleysteel.com/steel101/
 S-PEMSS,"PEM bulletin SS, Fasteners For Use In Stainless Steel Sheets (rev 10/13/26): SP pg SS-3, FH4 pg SS-10, materials SS-15, performance SS-23/24, Dos and Donts SS-27",https://www.pemnet.com/wp-content/uploads/sites/2/2022/06/ssdata.pdf
 S-PEMMIL,"PEM MIL cross reference for PEM brand fasteners (no mil PN for SP, FH4, FHP)",https://www.pemnet.com/resources/download-center/mil-cross-reference-pem-brand-fasteners/
-S-PEMCAGE,"PEM classification numbers: PennEngineering Danboro PA CAGE 46384",https://www.pemnet.com/resources/download-center/classification-numbers/
+S-PEMCAGE,PEM classification numbers: PennEngineering Danboro PA CAGE 46384,https://www.pemnet.com/resources/download-center/classification-numbers/
+S-STK-CHAL,"Chatham Steel aluminum sheet and plate tables: 5052-H32 sheet .020-.190, plate .250/.375; 6061-T6 sheet .025-.190; 6061-T651 plate .250-6.000",https://www.chathamsteel.com/tables/aluminium/sheets-plates.pdf
+S-STK-CONT,"Continental Steel 5052-H32 aluminum sheet and coil thickness list (.020-.249, includes .160)",https://www.continentalsteel.com/viewitems/aluminum-sheet-coil/aluminum-sheet-and-coil-series-5052-h32
+S-STK-SCS52,SendCutSend 5052 H32 aluminum thickness options (.040-.500),https://sendcutsend.com/materials/5052-aluminum/
+S-STK-CHSS,"Chatham Steel stainless steel sheet table, Type 304/304L/316/316L, gauge and decimal thickness (28 GA .015 to 7 GA .1874)",https://www.chathamsteel.com/tables/stainless-nickle-alloy/sheets.pdf
+S-STK-CHSP,"Chatham Steel stainless plate table, Type 304/304L/316/316L hot rolled annealed and pickled (3/16 to 4 in)",https://www.chathamsteel.com/tables/stainless-nickle-alloy/plates.pdf
+S-STK-SHAW,"Shaw Steel gauge chart: Manufacturers' Standard Gauge nominal thickness for hot rolled, HRPO and cold rolled sheet",https://shawsteel.com/wp-content/uploads/2025/09/Shaw_Steel_Gauge_Chart_Final.pdf
+S-STK-RUSS,Russel Metals cold rolled sheet (A1008 CS): gauge and nominal thickness table,https://www.russelmetals.com/en/product/sheet-and-coil/cold-rolled/
+S-STK-WEST,Westfield Steel steel sheets: ASTM A1008 CS Type B stocked 24 gauge to 10 gauge,https://westfieldsteel.com/steel-sheets/

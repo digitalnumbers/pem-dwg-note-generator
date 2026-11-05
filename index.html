@@ -47,13 +47,15 @@
       <div class="field two">
         <div>
           <label for="thk">Thickness</label>
-          <div class="unit-input"><input id="thk" name="thk" type="number" inputmode="decimal" step="0.001" min="0"><span>in</span></div>
+          <div class="unit-input"><input id="thk" name="thk" type="number" inputmode="decimal" step="any" min="0" list="thk-std"><span>in</span></div>
+          <datalist id="thk-std"></datalist>
         </div>
         <div>
           <label for="units">Units</label>
           <select id="units" disabled title="Unit selection will be added later"><option>inch</option><option>mm (later)</option></select>
         </div>
       </div>
+      <div class="hint thk-hint" id="thk-hint" aria-live="polite"></div>
 
       <fieldset class="field" data-for="insert">
         <legend>Hole</legend>

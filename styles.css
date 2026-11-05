@@ -159,3 +159,9 @@ select:disabled { color: var(--color-text-faint); background: var(--color-surfac
   .spec { display: block; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition-duration: .01ms !important; } }
+
+/* standard stock thickness hint */
+.field.two:has(+ .thk-hint:not(:empty)) { margin-bottom: var(--space-1); }
+.thk-hint { margin: 0 0 var(--space-4); line-height: 1.9; }
+.thk-hint .snap { font: inherit; font-size: var(--text-xs); padding: 1px 8px; margin-left: 4px; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-surface); color: var(--color-text); cursor: pointer; }
+.thk-hint .snap:hover { border-color: var(--color-primary); }

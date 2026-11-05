@@ -1,7 +1,7 @@
 // Pure note/validation logic. No DOM access, so it runs in the browser and in Node tests.
 // Rule: every value printed in a note comes straight from a CSV row; nothing is computed into the note.
 
-export const APP_VERSION = "1.2.0";
+export const APP_VERSION = "1.3.0";
 export const THREADS = ['4-40', '8-32', '10-32', '1/4-20'];
 export const MATERIALS = ['5052-H32', '6061-T6', 'A304 (annealed)', 'A1008 CS Type B'];
 
@@ -61,6 +61,26 @@ export function hwMatKey(materialText) {
   return '';
 }
 
+// ---------------------------------------------------------------- standard stock thicknesses
+// materials.csv std_thk_in / std_thk_labels (semicolon lists, ascending). See data/README.md.
+export function stdThicknesses(mat) {
+  if (!mat || !mat.std_thk_in) return [];
+  const v = mat.std_thk_in.split(';'), l = (mat.std_thk_labels || '').split(';');
+  return v.map((x, i) => ({ t: num(x), value: x.trim(), label: (l[i] || '').trim() }));
+}
+// Thickness text: 3 places, or 4 when the 4th digit is significant (gauge nominals such as .0598).
+export function fmtThk(t) { const s4 = t.toFixed(4); return dec(s4.endsWith('0') ? t.toFixed(3) : s4); }
+export function stdName(x) { return /^\./.test(x.label) ? 'std ' + x.label.split(' ').slice(1).join(' ') : x.label; }
+const STD_TOL = 0.0005;
+export function stdMatch(mat, T) { return stdThicknesses(mat).find(x => Math.abs(x.t - T) <= STD_TOL) || null; }
+// Suggest the smallest (or largest) standard thickness that satisfies ok(t); fall back to the exact value.
+export function stdSuggest(mat, ok, exact, largest = false, extra = {}) {
+  const list = stdThicknesses(mat).filter(x => ok(x.t));
+  const pick = largest ? list[list.length - 1] : list[0];
+  if (pick) return { label: `Set thickness to ${dec(pick.value)} (${stdName(pick)})`, patch: { thk: pick.value, ...extra } };
+  return { label: `Set thickness to ${dec(exact)} (non-standard)`, patch: { thk: exact, ...extra } };
+}
+
 const CSK_SYMBOL = { text: 'CSINK', sw: '<MOD-CSK>', unicode: '\u2335' };
 
 export const DEFAULT_STATE = {
@@ -84,6 +104,10 @@ export function compute(state, data) {
     out.warnings.push({ text: 'Quantity must be a whole number of 1 or more. Using ' + qty + '.', actions: [{ label: 'Set ' + qty, patch: { qty: String(qty) } }] });
   }
 
+  if (validT) {
+    const list = stdThicknesses(mat), match = stdMatch(mat, T);
+    out.thkStd = { match, below: match ? null : [...list].reverse().find(x => x.t < T) || null, above: match ? null : list.find(x => x.t > T) || null, count: list.length };
+  }
   if (s.type === 'insert') computeInsert(s, data, mat, T, validT, q, sideWord, out);
   else if (s.type === 'nut') computeNut(s, data, mat, T, validT, q, sideWord, out);
   else computeStud(s, data, mat, T, validT, q, sideWord, out);
@@ -129,21 +153,21 @@ function computeInsert(s, data, mat, T, validT, q, sideWord, out) {
     const acts = [];
     if (s.hole === 'blind' && T >= num(r0.min_flange_thk_thru_hole_csk)) acts.push({ label: 'Use thru hole', patch: { hole: 'thru', len: 'auto' } });
     const sug = s.hole === 'thru' ? req : Math.ceil((req + 0.0005) * 1000) / 1000;
-    acts.push({ label: `Set thickness to ${dec(sug.toFixed(3))}`, patch: { thk: sug.toFixed(3), len: 'auto' } });
+    acts.push(stdSuggest(mat, t => s.hole === 'thru' ? t >= req : t > req, sug.toFixed(3), false, { len: 'auto' }));
     out.warnings.push({
       text: s.hole === 'thru'
-        ? `No insert length fits ${dec(T.toFixed(3))} in. The shortest (1D) needs at least ${dec(r0.min_flange_thk_thru_hole_csk)} in for a countersunk thru hole.`
-        : `No insert length fits a blind hole in ${dec(T.toFixed(3))} in. The shortest (1D) needs MIN DEPTH ${dec(r0[depthCol])} plus the 118\u00b0 drill point, about ${dec(req.toFixed(3))} in, inside the material.`,
+        ? `No insert length fits ${fmtThk(T)} in. The shortest (1D) needs at least ${dec(r0.min_flange_thk_thru_hole_csk)} in for a countersunk thru hole.`
+        : `No insert length fits a blind hole in ${fmtThk(T)} in. The shortest (1D) needs MIN DEPTH ${dec(r0[depthCol])} plus the 118\u00b0 drill point, about ${dec(req.toFixed(3))} in, inside the material.`,
       actions: acts,
     });
   } else if (validT && !fits(row)) {
     const best = fitting[fitting.length - 1];
     out.warnings.push({
       text: s.hole === 'thru'
-        ? `${num(row.length_dia_mult)}D insert needs ${dec(row.min_flange_thk_thru_hole_csk)} in minimum thickness for a thru hole; material is ${dec(T.toFixed(3))} in.`
+        ? `${num(row.length_dia_mult)}D insert needs ${dec(row.min_flange_thk_thru_hole_csk)} in minimum thickness for a thru hole; material is ${fmtThk(T)} in.`
         : num(row[depthCol]) < T
-          ? `${num(row.length_dia_mult)}D insert: at MIN DEPTH ${dec(row[depthCol])} the 118\u00b0 drill point reaches about ${dec(tip(row).toFixed(3))} in and breaks through the ${dec(T.toFixed(3))} in material.`
-          : `${num(row.length_dia_mult)}D insert MIN DEPTH ${dec(row[depthCol])} in does not fit in ${dec(T.toFixed(3))} in.`,
+          ? `${num(row.length_dia_mult)}D insert: at MIN DEPTH ${dec(row[depthCol])} the 118\u00b0 drill point reaches about ${dec(tip(row).toFixed(3))} in and breaks through the ${fmtThk(T)} in material.`
+          : `${num(row.length_dia_mult)}D insert MIN DEPTH ${dec(row[depthCol])} in does not fit in ${fmtThk(T)} in.`,
       actions: [
         ...(best ? [{ label: `Use ${num(best.length_dia_mult)}D (longest that fits)`, patch: { len: best.length_dia_mult } }] : []),
         ...(s.hole === 'blind' && s.tap === 'plug' && validT && (num(row.min_drill_depth_bottoming_tap_FB) + tip(row) - num(row[depthCol])) < T ? [{ label: 'Keep length, use bottoming tap', patch: { tap: 'bottoming' } }] : []),
@@ -275,9 +299,9 @@ function computeNut(s, data, mat, T, validT, q, sideWord, out) {
 
   if (validT && !match) {
     const minT = num(rows[0].sheet_thk_min);
-    if (T < minT) out.warnings.push({ text: `${dec(T.toFixed(3))} in is below the minimum sheet thickness (${rows[0].sheet_thk_min}) for ${hwName(pick.key, 'nut')} ${s.thread} nuts.`, actions: [{ label: `Set thickness to ${rows[0].sheet_thk_min}`, patch: { thk: '0' + rows[0].sheet_thk_min, len: 'auto' } }] });
+    if (T < minT) out.warnings.push({ text: `${fmtThk(T)} in is below the minimum sheet thickness (${rows[0].sheet_thk_min}) for ${hwName(pick.key, 'nut')} ${s.thread} nuts.`, actions: [stdSuggest(mat, t => rows.some(r => t >= num(r.sheet_thk_min) && (r.sheet_thk_max === '' || t <= num(r.sheet_thk_max))), '0' + rows[0].sheet_thk_min, false, { len: 'auto' })] });
   } else if (validT && !inRange(row)) {
-    out.warnings.push({ text: `Shank A ${dec(row.shank_length_A)} is for sheet ${row.sheet_thk_min}-${row.sheet_thk_max || 'up'}; material is ${dec(T.toFixed(3))} in.`, actions: [{ label: `Use A ${dec(match.shank_length_A)} (matches thickness)`, patch: { len: match.shank_length_A } }] });
+    out.warnings.push({ text: `Shank A ${dec(row.shank_length_A)} is for sheet ${row.sheet_thk_min}-${row.sheet_thk_max || 'up'}; material is ${fmtThk(T)} in.`, actions: [{ label: `Use A ${dec(match.shank_length_A)} (matches thickness)`, patch: { len: match.shank_length_A } }] });
   }
   const { pn, cage } = pnFor(row, s);
   out.prep.push(`${q}THRU ${row.hole_dia_in_sheet} ${row.hole_tol}`);
@@ -329,13 +353,13 @@ function computeStud(s, data, mat, T, validT, q, sideWord, out) {
       : `${HW_MAT_LABEL[pick.key]} not rated for ${s.material}`;
   hardnessWarning(s, mat, 'm63540', pick, row.max_sheet_hardness_HRB, out);
   if (validT && T < num(row.min_sheet_thk)) {
-    out.warnings.push({ text: `${dec(T.toFixed(3))} in is below the minimum sheet thickness (${row.min_sheet_thk}) for ${s.thread} studs.`, actions: [{ label: `Set thickness to ${row.min_sheet_thk}`, patch: { thk: '0' + row.min_sheet_thk } }] });
+    out.warnings.push({ text: `${fmtThk(T)} in is below the minimum sheet thickness (${row.min_sheet_thk}) for ${s.thread} studs.`, actions: [stdSuggest(mat, t => t >= num(row.min_sheet_thk) && (!row.sheet_thk_max || t <= num(row.sheet_thk_max)), '0' + row.min_sheet_thk)] });
   }
   if (validT && row.sheet_thk_max && T > num(row.sheet_thk_max)) {
-    out.warnings.push({ text: `${dec(T.toFixed(3))} in is above the PEM sheet thickness range (${row.min_sheet_thk}-${row.sheet_thk_max}) for ${s.thread} FH4 studs; PEM notes performance may be reduced in thicker sheets.`, actions: [{ label: `Set thickness to ${row.sheet_thk_max}`, patch: { thk: '0' + row.sheet_thk_max } }] });
+    out.warnings.push({ text: `${fmtThk(T)} in is above the PEM sheet thickness range (${row.min_sheet_thk}-${row.sheet_thk_max}) for ${s.thread} FH4 studs; PEM notes performance may be reduced in thicker sheets.`, actions: [stdSuggest(mat, t => t >= num(row.min_sheet_thk) && t <= num(row.sheet_thk_max), '0' + row.sheet_thk_max, true)] });
   }
   if (validT && !protrudes(row)) {
-    out.warnings.push({ text: `Stud length L ${row.length_L} does not protrude past ${dec(T.toFixed(3))} in sheet (L is measured from the flush head face).`,
+    out.warnings.push({ text: `Stud length L ${row.length_L} does not protrude past ${fmtThk(T)} in sheet (L is measured from the flush head face).`,
       actions: firstFit ? [{ label: `Use L ${firstFit.length_L}`, patch: { len: firstFit.length_L } }] : [] });
   }
   const { pn, cage } = pnFor(row, s);

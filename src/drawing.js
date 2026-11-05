@@ -7,6 +7,7 @@ let VB_H = 560;
 const INK = '#1c1f23', MUTED = '#5c6066', BLUE = '#1d4f8f', PAPER = '#ffffff';
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
 const f3 = v => { const s = v.toFixed(3); return s.startsWith('0.') ? s.slice(1) : s; };
+const fT = v => (v.toFixed(4).endsWith('0') ? f3(v) : f4(v));
 const f4 = v => { const s = v.toFixed(4); return s.startsWith('0.') ? s.slice(1) : s; };
 const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -148,7 +149,7 @@ export function drawSection(g, opts = {}) {
     }
     parts.push(`<g clip-path="url(#sub)">${coils}</g>`);
     // dims
-    dims.push(dimV(xSubL - 34, 0, T, f3(T), xSubL));
+    dims.push(dimV(xSubL - 34, 0, T, fT(T), xSubL));
     let dx = xSubR + 24;
     if (blind) { dims.push(dimV(dx, 0, zDepth, `MIN DEPTH ${g.depthLabel}`, X(dR))); dx += 104; }
     if (blind) { dims.push(dimV(dx, 0, zThr, `H ${g.HLabel}`, X(stiR))); dx += 70; }
@@ -171,7 +172,7 @@ export function drawSection(g, opts = {}) {
       parts.push(P(toXY(pts), `fill="url(#hatch2)" stroke="${INK}" stroke-width="1.2" stroke-linejoin="round"`));
       parts.push(PL(toXY(zig(sg * rMin, sg * rMaj, -g.Eh, g.A, P_)), `fill="none" stroke="${INK}" stroke-width="0.7"`));
     }
-    dims.push(dimV(xSubL - 34, 0, T, f3(T), xSubL));
+    dims.push(dimV(xSubL - 34, 0, T, fT(T), xSubL));
     const dx = xSubR + 24;
     dims.push(dimV(dx, -g.Eh, 0, `HEAD ${g.EhLabel}`, X(g.E / 2)));
     dims.push(dimV(dx + 110, 0, g.A, `A ${String(g.ALabel).replace(/^0\./, '.')}`, X(g.C / 2)));
@@ -192,7 +193,7 @@ export function drawSection(g, opts = {}) {
     for (let z = zS + P_ / 2; z < g.L - 0.6 * P_; z += P_) thr += `<line x1="${X(-rMaj)}" y1="${Y(z - P_ / 4)}" x2="${X(rMaj)}" y2="${Y(z + P_ / 4)}" stroke="#6b7480" stroke-width="0.6"/>`;
     parts.push(thr);
     parts.push(`<line x1="${X(-rMin)}" y1="${Y(zS)}" x2="${X(-rMin)}" y2="${Y(g.L)}" stroke="#6b7480" stroke-width="0.6" stroke-dasharray="4 3"/><line x1="${X(rMin)}" y1="${Y(zS)}" x2="${X(rMin)}" y2="${Y(g.L)}" stroke="#6b7480" stroke-width="0.6" stroke-dasharray="4 3"/>`);
-    dims.push(dimV(xSubL - 34, 0, T, f3(T), xSubL));
+    dims.push(dimV(xSubL - 34, 0, T, fT(T), xSubL));
     const dx = xSubR + 24;
     dims.push(dimV(dx, 0, g.L, `L ${g.LLabel}`, X(rMaj)));
     if (g.L > T) dims.push(dimV(dx + 96, T, g.L, `PROTRUDES ${f3(g.L - T)}`, X(rMaj)));

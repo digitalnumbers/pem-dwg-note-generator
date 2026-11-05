@@ -1,4 +1,4 @@
-# Hardware data (v0.10, confirmed-only)
+# Hardware data (v0.11, confirmed-only)
 
 | File | Rows | Content |
 |---|---|---|
@@ -7,8 +7,8 @@
 | hardware_m63540_1.csv | 100 | Flush-head studs 2-56 through 1/4-20; carbon and CRES |
 | hardware_pem_sp.csv | 11 | PEM SP (PEM 300) clinch nuts 4-40, 8-32, 10-32, 1/4-20; commercial only, no mil PN |
 | hardware_pem_fh4.csv | 35 | PEM FH4 flush-head studs 4-40, 8-32, 10-32, 1/4-20; commercial only, no mil PN |
-| materials.csv | 4 | 5052-H32, 6061-T6, A304, A1008 CS Type B hardness and compatibility |
-| sources.csv | 20 | Source IDs referenced in each row |
+| materials.csv | 4 | 5052-H32, 6061-T6, A304, A1008 CS Type B hardness, compatibility and standard stock thicknesses |
+| sources.csv | 28 | Source IDs referenced in each row |
 
 Rules
 - `note_pn` / `note_cage` are what the drawing note prints (current mil PN, CAGE 80205). `legacy_pn` / `legacy_cage` are kept for reference.
@@ -22,6 +22,15 @@ Rules
 Hardware material rule (v0.10)
 - CRES hardware only. The app never offers carbon steel or aluminum nuts and studs. Those rows stay in `hardware_m45938_1.csv` and `hardware_m63540_1.csv` (and their `m45938_carbon`, `m45938_aluminum`, `m63540_carbon` columns in `materials.csv`) as a complete record of the spec, but are filtered out in the app.
 - Allowed: mil CRES (M45938/1-xxC, M63540/1-xxC) and PEM hardened stainless SP and FH4 (commercial only). Auto-select uses mil CRES whenever it is rated, including at its limit, and uses SP or FH4 only when no mil CRES part is rated.
+
+Standard stock thicknesses (v0.11)
+- `materials.csv` columns: `std_thk_in` (ascending decimal inches, semicolon separated), `std_thk_labels` (gauge or form for each value, same order), `std_thk_basis`, `std_thk_sources`.
+- 5052-H32: sheet .020, .025, .032, .040, .050, .063, .080, .090, .100, .125, .190 and plate .250, .375 (Chatham Steel); .160 (Continental Steel); .500 (SendCutSend). Aluminum is ordered by decimal thickness, not gauge.
+- 6061-T6: sheet .025 through .190 (Chatham Steel). Plate .250, .313, .375, .500, .625, .750, 1.000 is stocked as 6061-T651 (Chatham Steel).
+- A304: stainless sheet gauges 28 GA .015 through 7 GA .1874 as decimal values (Chatham Steel sheet table, Type 304/304L 2B), and plate 1/4 through 1 in (Chatham Steel plate table). 3/16 plate is listed once, as 7 GA .1874.
+- A1008 CS Type B: Manufacturers' Standard Gauge nominal values 24 GA .0239 through 10 GA .1345 (Shaw Steel gauge chart; Russel Metals lists 10 GA as .1344). Stock range 24 GA to 10 GA per Westfield Steel. Cold rolled sheet is not stocked as plate, so thicker A1008 requirements are shown as non-standard.
+- Lists are capped at 1.000 in (app scope). Gauge decimals are nominal; mill tolerance applies.
+- App use: every "Set thickness to" suggestion snaps to the smallest standard thickness that meets the requirement (FH4 above its maximum: the largest standard thickness inside the PEM range). If no standard thickness works, the exact value is offered and labeled non-standard. An entry within .0005 in of a standard value counts as standard (for example .060 matches 16 GA .0598).
 
 Commercial-only PEM rows (SP, FH4)
 - Source: PEM bulletin SS, Fasteners For Use In Stainless Steel Sheets, rev 10/13/26. SP dimensions pg SS-3, FH4 pg SS-10, material pg SS-15, performance pg SS-23/24, Dos and Don'ts pg SS-27. Checked against the page images.

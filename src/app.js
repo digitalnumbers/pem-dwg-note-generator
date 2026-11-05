@@ -1,4 +1,4 @@
-import { APP_VERSION, THREADS, MATERIALS, HW_MAT_LABEL, DEFAULT_STATE, parseCSV, compute, encodeState, decodeState } from './logic.js';
+import { APP_VERSION, THREADS, MATERIALS, HW_MAT_LABEL, DEFAULT_STATE, parseCSV, compute, encodeState, decodeState, stdThicknesses, stdName, dec } from './logic.js';
 import { drawSection, VB_W } from './drawing.js';
 
 const $ = id => document.getElementById(id);
@@ -93,7 +93,22 @@ function fillSelects(o) {
   len.value = o.choices.some(c => c.value === state.len) ? state.len : 'auto';
   $('len-hint').textContent = o.choices.length ? `${o.choices.filter(c => c.fits).length} of ${o.choices.length} confirmed lengths fit ${state.thk || '?'} in.` : '';
   const m = data.materials.find(r => r.material === state.material);
+  fillThkStd(m, o);
   $('mat-hint').textContent = m ? [m.hardness_HB && `${m.hardness_HB} HB`, /^\d/.test(m.hardness_HRB) && m.hardness_HRB.replace(/^(\d+)\s*(.*)$/, (_, n, r) => `${n} HRB${r ? ' ' + r : ''}`)].filter(Boolean).join(' / ') + ` (${m.hardness_basis})` : '';
+}
+
+// Standard stock thicknesses for the selected material: datalist on the input plus a status hint.
+function fillThkStd(m, o) {
+  const list = stdThicknesses(m);
+  const key = m ? m.material : '';
+  const dl = $('thk-std');
+  if (dl.dataset.mat !== key) { dl.dataset.mat = key; dl.innerHTML = list.map(x => `<option value="${x.value}">${esc(dec(x.value) + ' ' + stdName(x))}</option>`).join(''); }
+  const h = $('thk-hint'), st = o.thkStd;
+  if (!list.length || !st) { h.innerHTML = ''; return; }
+  if (st.match) { h.textContent = `Standard ${m.material} stock: ${dec(st.match.value)} (${stdName(st.match)})`; return; }
+  const btn = x => `<button type="button" class="snap" data-thk="${x.value}">${esc(dec(x.value) + ' ' + stdName(x))}</button>`;
+  h.innerHTML = `Not a standard ${esc(m.material)} stock thickness.${st.below || st.above ? ' Nearest: ' + [st.below, st.above].filter(Boolean).map(btn).join(' ') : ''}`;
+  h.querySelectorAll('button.snap').forEach(b => b.addEventListener('click', () => { state.thk = b.dataset.thk; if (state.len !== 'auto') state.len = 'auto'; writeForm(); update(); }));
 }
 
 function update(pushHash = true) {

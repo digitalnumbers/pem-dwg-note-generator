@@ -61,4 +61,27 @@ check('A1008 stud auto -> CRES at limit', { type: 'stud', material: 'A1008 CS Ty
   ['4X THRU .189 +.003/-.000', 'INSTALL SELF-CLINCHING STUD', 'PN: M63540/1-38C', 'CAGE: 80205', 'NEAR SIDE FLUSH'], o => o.hwmatChosen === 'cres' && !o.nonCompliant);
 check('5052 stud and nut never offer carbon or aluminum', { type: 'stud', material: '5052-H32', thk: '0.090', len: '.625' },
   ['4X THRU .189 +.003/-.000', 'INSTALL SELF-CLINCHING STUD', 'PN: M63540/1-38C', 'CAGE: 80205', 'NEAR SIDE FLUSH'], o => o.hwmatAvail.join() === 'cres,pem');
+// Standard stock thickness snapping (materials.csv std_thk_in)
+function checkSnap(name, state, label, thk, std) {
+  const o = compute(state, data);
+  const a = o.warnings.flatMap(w => w.actions).find(x => x.patch.thk);
+  const ok = a && a.label === label && a.patch.thk === thk && (!std || std(o.thkStd));
+  if (!ok) { fail++; console.log('FAIL', name, a, o.thkStd); } else console.log('ok  ', name);
+}
+checkSnap('insert 6061 .100 thru -> 1/4 plate', { thk: '0.100' }, 'Set thickness to .250 (1/4 plate T651)', '0.250', t => t.match && t.match.value === '0.100');
+checkSnap('insert 6061 .100 blind -> 5/8 plate', { thk: '0.100', hole: 'blind' }, 'Set thickness to .625 (5/8 plate T651)', '0.625');
+checkSnap('insert A1008 .100 -> non-standard (exceeds cold rolled stock)', { thk: '0.100', material: 'A1008 CS Type B' }, 'Set thickness to .220 (non-standard)', '0.220');
+checkSnap('nut 6061 .030 -> .063 sheet', { type: 'nut', thk: '0.030' }, 'Set thickness to .063 (std sheet)', '0.063', t => t.below.value === '0.025' && t.above.value === '0.032');
+checkSnap('nut A1008 .020 -> 16 GA', { type: 'nut', thk: '0.020', material: 'A1008 CS Type B' }, 'Set thickness to .0598 (16 GA)', '0.0598');
+checkSnap('stud A1008 1/4-20 .050 -> 14 GA', { type: 'stud', thread: '1/4-20', thk: '0.050', material: 'A1008 CS Type B' }, 'Set thickness to .0747 (14 GA)', '0.0747');
+checkSnap('FH4 A304 .125 above max -> largest std in range 13 GA', { type: 'stud', material: 'A304 (annealed)', thk: '0.125' }, 'Set thickness to .090 (13 GA)', '0.090');
+checkSnap('FH4 A304 .030 below min -> 19 GA', { type: 'stud', material: 'A304 (annealed)', thk: '0.030' }, 'Set thickness to .042 (19 GA)', '0.042', t => t.match.label === '22 GA');
+{
+  const o = compute({ type: 'nut', material: 'A1008 CS Type B', thk: '0.060' }, data);
+  const ok = o.thkStd.match && o.thkStd.match.label === '16 GA';
+  if (!ok) { fail++; console.log('FAIL .060 matches 16 GA nominal'); } else console.log('ok   .060 entry matches 16 GA (.0598) within tolerance');
+  const d = compute({ material: 'A1008 CS Type B' }, data);
+  const ok2 = !d.thkStd.match && d.thkStd.below.value === '0.1345' && !d.thkStd.above;
+  if (!ok2) { fail++; console.log('FAIL A1008 .250 flagged non-standard'); } else console.log('ok   A1008 .250 flagged non-standard, nearest 10 GA');
+}
 if (fail) { console.log(fail + ' failed'); process.exit(1); } else console.log('all passed');
