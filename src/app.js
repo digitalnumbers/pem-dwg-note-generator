@@ -1,5 +1,5 @@
-import { APP_VERSION, THREADS, MATERIALS, HW_MAT_LABEL, DEFAULT_STATE, parseCSV, compute, encodeState, decodeState, stdThicknesses, stdName, dec } from './logic.js?v=1.5.0';
-import { drawSection, VB_W } from './drawing.js?v=1.5.0';
+import { APP_VERSION, THREADS, MATERIALS, HW_MAT_LABEL, DEFAULT_STATE, parseCSV, compute, encodeState, decodeState, stdThicknesses, stdName, dec } from './logic.js?v=1.6.0';
+import { drawSection, VB_W } from './drawing.js?v=1.6.0';
 
 const $ = id => document.getElementById(id);
 const form = $('form');
@@ -18,9 +18,9 @@ async function init() {
   $('material').innerHTML = MATERIALS.map(m => `<option value="${m}">${m}</option>`).join('');
   $('threads').innerHTML = THREADS.map(t => `<label><input type="radio" name="thread" value="${t}"><span>${t}</span></label>`).join('');
   try {
-    const [inserts, nuts, studs, spNuts, fh4Studs, materials, src, stack] = await Promise.all(['hardware_ms21208.csv', 'hardware_m45938_1.csv', 'hardware_m63540_1.csv', 'hardware_pem_sp.csv', 'hardware_pem_fh4.csv', 'materials.csv', 'sources.csv', 'hardware_stud_stack.csv'].map(loadCSV));
+    const [inserts, nuts, studs, spNuts, fh4Studs, materials, src, stack, studPerf] = await Promise.all(['hardware_ms21208.csv', 'hardware_m45938_1.csv', 'hardware_m63540_1.csv', 'hardware_pem_sp.csv', 'hardware_pem_fh4.csv', 'materials.csv', 'sources.csv', 'hardware_stud_stack.csv', 'pem_fh_performance.csv'].map(loadCSV));
     // Commercial-only PEM rows (no mil PN) join the same pools; auto-select uses them only when no mil part is rated.
-    data = { inserts, nuts: [...nuts, ...spNuts], studs: [...studs, ...fh4Studs], materials, stack };
+    data = { inserts, nuts: [...nuts, ...spNuts], studs: [...studs, ...fh4Studs], materials, stack, studPerf };
     for (const r of src) sources[r.id] = r;
   } catch (e) {
     $('note').textContent = 'Could not load the spec data files. ' + e.message;
@@ -203,7 +203,7 @@ function update(pushHash = true) {
   if (!o.commercial || o.commercial.hidden) c.innerHTML = '';
   else if (o.commercial.isNotePN) c.innerHTML = `<span class="ref-k">Commercial PN (PEM)</span><span class="ref-v">${esc(o.commercial.pn)}</span>` +
     `<span class="basis">${esc(o.commercial.basis || '')}</span>`;
-  else c.innerHTML = `<span class="ref-k">Commercial reference (PEM)</span><span class="ref-v">${o.commercial.pn ? esc(o.commercial.pn) : 'No PEM equivalent'}</span>` +
+  else c.innerHTML = `<span class="ref-k">Commercial reference (${esc(o.commercial.brand || 'PEM')})</span><span class="ref-v">${o.commercial.pn ? esc(o.commercial.pn) : `No ${esc(o.commercial.brand || 'PEM')} equivalent`}</span>` +
     `<span class="basis">${o.commercial.pn ? 'Dimensional equivalent, reference only. Not part of the note; verify before substituting. ' : ''}${esc(o.commercial.basis || '')}</span>`;
   c.title = o.commercial?.basis || '';
   // warnings

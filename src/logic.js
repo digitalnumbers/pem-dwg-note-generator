@@ -1,7 +1,7 @@
 // Pure note/validation logic. No DOM access, so it runs in the browser and in Node tests.
 // Rule: every value printed in a note comes straight from a CSV row; nothing is computed into the note.
 
-export const APP_VERSION = "1.5.0";
+export const APP_VERSION = "1.6.0";
 export const THREADS = ['4-40', '8-32', '10-32', '1/4-20'];
 export const MATERIALS = ['5052-H32', '6061-T6', 'A304 (annealed)', 'A1008 CS Type B'];
 
@@ -240,9 +240,8 @@ function computeInsert(s, data, mat, T, validT, q, sideWord, out) {
     out.prep.push(`${q}DRILL ${drill} THRU`, csk, `TAP ${row.tap} THRU`);
   }
   out.install.push('INSTALL THREADED INSERT', 'BREAK TANG', `PN: ${pn}`, `CAGE: ${cage}`, sideWord);
-  out.commercial = { pn: row.commercial_pem_pn, basis: row.commercial_pem_basis, hidden: true };
+  out.commercial = { pn: row.commercial_pem_pn, basis: row.commercial_pem_basis, hidden: false, brand: 'Heli-Coil' };
   if (s.hole === 'blind' && validT) out.info.push(`MIN DEPTH is to full drill diameter. The 118\u00b0 point reaches about ${dec(tip(row).toFixed(3))} in, leaving about ${dec(Math.max(0, T - tip(row)).toFixed(3))} in of material below the point at minimum depth.`);
-  out.info.push(`Drill from the ${drillCol === 'drill_steel' ? 'steel' : 'aluminum'} column for ${s.material}.`);
   const tg = THREAD_GEOM[s.thread];
   out.geom = {
     kind: 'insert', T, hole: s.hole, P: 1 / tg.tpi, D: tg.D, drill: drillDecimal(row[drillCol]), drillLabel: drill,
@@ -362,13 +361,10 @@ function computeNut(s, data, mat, T, validT, q, sideWord, out) {
   const hs = holeSize(row.hole_dia_in_sheet, row.hole_tol);
   out.prep.push(`${q}${hs.text} THRU`);
   if (hs.adjusted) out.info.push(`Spec hole ${hs.spec} has 4 places; the nominal is rounded inward to ${hs.nominal} so it stays inside the spec range (${hs.limits}).`);
-  out.info.push(`Hole size tolerance is per the drawing title block. Spec hole: ${hs.spec}.`);
   out.install.push('INSTALL SELF-CLINCHING NUT', `PN: ${pn}`, `CAGE: ${cage}`, sideWord);
   out.commercial = { pn: row.commercial_pem_pn, basis: row.commercial_pem_basis, hidden: false, isNotePN: row.commercial_only === 'Y' };
   const edge = row.min_edge_dist_spec || '';
   const edgeSrc = row.commercial_only === 'Y' ? 'PEM' : 'spec';
-  out.info.push(edge ? `Minimum hole center to sheet edge: ${edge} (${edgeSrc}).` : `Minimum edge distance is illegible in the spec scan${row.min_edge_dist_vendor_ref ? `; PEM reference value ${row.min_edge_dist_vendor_ref} (not from spec)` : ''}.`);
-  out.info.push('Install the mating screw from the shank (pilot) side of the nut.');
   commercialOnlyInfo(row, 'nut', out);
   const tg = THREAD_GEOM[s.thread];
   out.geom = {
@@ -390,6 +386,20 @@ function computeNut(s, data, mat, T, validT, q, sideWord, out) {
       ? ['Install force / push-out / torque-out (PEM avg, 304 SS)', `${row.approx_install_force_lb} lb / ${row.pushout_avg_lb} lb / ${row.torqueout_avg_inlb} in-lb`]
       : ['Install force (approx) / push-out / torque-out', `${row.approx_install_force_lb} lb / ${row.pushout_min_lb} lb / ${row.torqueout_min_inlb} in-lb`],
   ];
+}
+
+// PEM stud performance (v1.6): push-out, torque-out and pull-thru (rip-out) averages from the PEM data sheet.
+// Mil M63540/1 sets no published values here, so the matching PEM FH (carbon) / FHS (CRES) row is shown, in the
+// PEM test sheet closest to the selected substrate (aluminum, else steel). FH4 rows carry their own values.
+function studPerfRow(row, mat, data) {
+  if (row.commercial_only === 'Y') {
+    return ['Push-out / torque-out / pull-thru (PEM avg, .060 304 SS)', `${row.pushout_avg_lb} lb / ${row.torqueout_avg_inlb} in-lb / ${row.pullthru_avg_lb} lb`];
+  }
+  const type = /^FHS-/.test(row.commercial_pem_pn) ? 'FHS' : /^FH-/.test(row.commercial_pem_pn) ? 'FH' : (hwMatKey(row.material) === 'cres' ? 'FHS' : 'FH');
+  const fam = /aluminum/i.test(mat?.family || '') ? 'aluminum' : 'steel';
+  const p = (data.studPerf || []).find(r => r.type === type && r.sheet_family === fam && r.threads.split(';').includes(row.thread));
+  if (!p) return ['Push-out / torque-out / pull-thru', 'no PEM data for this thread'];
+  return [`Push-out / torque-out / pull-thru (PEM ${type} avg, ${p.test_sheet} ${p.test_sheet_HRB} HRB)`, `${p.pushout_lb} lb / ${p.torqueout_inlb} in-lb / ${p.pullthru_lb} lb`];
 }
 
 function computeStud(s, data, mat, T, validT, q, sideWord, out) {
@@ -438,14 +448,11 @@ function computeStud(s, data, mat, T, validT, q, sideWord, out) {
   const hs = holeSize(row.hole_dia_in_sheet, row.hole_tol);
   out.prep.push(`${q}${hs.text} THRU`);
   if (hs.adjusted) out.info.push(`Spec hole ${hs.spec} has 4 places; the nominal is rounded inward to ${hs.nominal} so it stays inside the spec range (${hs.limits}).`);
-  out.info.push(`Hole size tolerance is per the drawing title block. Spec hole: ${hs.spec}.`);
   out.install.push('INSTALL SELF-CLINCHING STUD', `PN: ${pn}`, `CAGE: ${cage}`, `${sideWord} FLUSH`);
   out.commercial = { pn: row.commercial_pem_pn, basis: row.commercial_pem_basis, hidden: false, isNotePN: row.commercial_only === 'Y' };
   const edge = row.min_edge_dist_spec || '';
   const edgeSrc = row.commercial_only === 'Y' ? 'PEM' : 'spec';
-  out.info.push(edge ? `Minimum hole center to sheet edge: ${edge} (${edgeSrc}).` : `Minimum edge distance is not legible in the spec${row.min_edge_dist_vendor_ref ? `; PEM reference value ${row.min_edge_dist_vendor_ref} (not from spec)` : ''}.`);
   if (stk && validT) out.info.push(`Auto length clears 2 X sheet (${fmtThk(T)} + ${fmtThk(T)} mating part) + ${stk.washer_pn} washer (${dec(stk.washer_thk_max)} max) + ${stk.nut_pn} lock nut (${dec(stk.nut_height_max)} max) = ${dec(reqL.toFixed(3))} in. L ${row.length_L} ${num(row.length_L) >= reqL - 1e-9 ? 'clears by ' + dec((num(row.length_L) - reqL).toFixed(3)) : 'is short by ' + dec((reqL - num(row.length_L)).toFixed(3))} in.`);
-  out.info.push(row.commercial_only === 'Y' ? `Recommended mating nut tightening torque: ${row.nut_tightening_torque_max_inlb} in-lb (PEM).` : `Mating nut tightening torque: ${row.nut_tightening_torque_max_inlb} in-lb max.`);
   if (row.commercial_only === 'Y') {
     out.info.push('Install with the PEM special anvil with a raised ring. FH4 is 400-series stainless: magnetic, and not for appreciable corrosive exposure or service above 300\u00b0F (PEM).');
     if (row.max_hole_in_attached_parts) out.info.push(`Max clearance hole in attached parts: ${row.max_hole_in_attached_parts}.`);
@@ -468,12 +475,8 @@ function computeStud(s, data, mat, T, validT, q, sideWord, out) {
     ['Head dia H', `${row.head_dia} ${row.head_dia_tol}`],
     ['Unthreaded length S (max, from head face)', row.unthreaded_S_max],
     ['Min edge distance', edge || `not legible in spec (PEM ref ${row.min_edge_dist_vendor_ref})`],
-    ['Protrusion past far face', validT ? dec((num(row.length_L) - T).toFixed(3)) : 'n/a'],
-    ...(stk ? [
-      ['Mating washer (length basis)', `${stk.washer_pn}, ${dec(stk.washer_thk_nom)} ${stk.washer_thk_tol} (${dec(stk.washer_thk_max)} max)`],
-      ['Mating lock nut (length basis)', `${stk.nut_pn}, height ${dec(stk.nut_height_min)}-${dec(stk.nut_height_max)}`],
-      ['Required L (2T + washer + nut)', validT ? dec(reqL.toFixed(3)) : 'n/a'],
-    ] : []),
+    ['Mating nut tightening torque', row.commercial_only === 'Y' ? `${row.nut_tightening_torque_max_inlb} in-lb (PEM recommended)` : `${row.nut_tightening_torque_max_inlb} in-lb max`],
+    studPerfRow(row, mat, data),
   ];
 }
 

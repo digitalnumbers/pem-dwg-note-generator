@@ -5,7 +5,7 @@ S-HC,"Heli-Coil catalog Table V (drill sizes, drill depth) and Table VII (counte
 S-MS21208B,MS21208B (inactive for new design),https://everyspec.com/MS-Specs/MS2/MS21000-MS21999/download.php?spec=MS21208B.007863.PDF
 S-45938,"MIL-N-45938/1B (2 Oct 1984), S/S by NASM45938/1; Amendment 1 (16 May 1997) NOT reviewed",https://everyspec.com/MIL-SPECS/MIL-SPECS-MIL-N/download.php?spec=MIL-N-45938-1B.015001.PDF
 S-63540,"MIL-S-63540/1A (31 Mar 1986), S/S by NASM63540/1-2000",https://quicksearch.dla.mil/Transient/1A87E7725AC14821803BBEBDEE17B731.pdf
-S-PEMFH,"PEM FH/FHS/FHA flush-head stud data sheet (length datum, min sheet, HRB/HB pairs)",https://www.pemnet.com/wp-content/uploads/sites/2/2022/06/fhdata.pdf
+S-PEMFH,"PEM FH/FHS/FHA flush-head stud data sheet (length datum, min sheet, HRB/HB pairs; FH/FHS performance data pg FH-29)",https://www.pemnet.com/wp-content/uploads/sites/2/2022/06/fhdata.pdf
 S-UNICORP,"Unicorp CLS/CLA nut tables (PEM-equivalent edge distance, mil-spec cross ref)",https://www.unicorpinc.com/CLA_standard_nuts.htm
 S-CAGE-NUT,NSN 5310-00-567-4992: M45938/1-17C design control CAGE 80205; 81349 replaced,https://www.nsndepot.com/NSN/5310-00-567-4992
 S-CAGE-INS,NSN 5325-00-597-3302: MS124695 = MS21208F1-15; CAGE 80205 / 96906,https://www.wbparts.com/rfq/5325-00-597-3302.html
@@ -31,3 +31,4 @@ S-NAS1149,"NAS1149 flat washer, Table I size and thickness codes and thickness t
 S-MS21044,"MS21044 product index, CRES (C) height max/min: C04 .157/.133, C08 .281/.219, C3 .281/.208 (Airfasco)",https://airfasco.com/products/MS/MS21044.php
 S-MS17830,"MS17830-4C 1/4-20 CRES self-locking nut, height .240-.360 (Military Fasteners)",https://military-fasteners.com/products/ms17830-4c-self-locking-hexagon-nut
 S-ASME-Y145,"ASME Y14.5-2018 para 4.1(e): define the part without specifying manufacturing methods; only the hole diameter is given",https://archive.org/stream/asme-y-14.5-2018-dimensioning-and-tolerancing/ASME-Y14.5-2018-Dimensioning-and-Tolerancing_djvu.txt
+S-HCXREF,"KATO Fastening Helicoil/Recoil cross reference, non-locking (MS122xxx/MS124xxx to Heli-Coil 1185/1191 PN)",https://katofastening.com/inserts/crosrefcnt.html

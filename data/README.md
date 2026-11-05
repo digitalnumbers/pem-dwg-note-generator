@@ -50,4 +50,6 @@ Open items
 Commercial PEM reference (reference only, never printed in the note)
 - `commercial_pem_pn` and `commercial_pem_basis` columns in all three hardware CSVs. Matched on thread, material, shank or length, and hole size from the PEM CL and FH data sheets. PEM's MIL cross reference maps the families (45938/1 to CLA/CLS/CLSS, 63540/1 to FH/FHS) but not dash numbers, so the basis column lists dimension differences.
 - For commercial-only rows, `commercial_pem_pn` equals `note_pn`.
+- In hardware_ms21208.csv, `commercial_pem_pn` holds the Heli-Coil commercial PN (1185 coarse / 1191 fine, plain finish) cross-referenced from the MS122xxx/MS124xxx PN (S-HCXREF).
 - Blank for all inserts (no PEM helical insert) and for nuts without a matching PEM shank length (M45938/1-1A, -19A, -20A).
+- `pem_fh_performance.csv` (v1.6): PEM FH/FHS flush-head stud averages from the FH data sheet pg FH-29 (installation force, push-out, torque-out, pull-thru, test sheet and HRB). Mil M63540/1 studs show the matching FH (carbon) or FHS (CRES) row in the aluminum test sheet for aluminum substrates, else the steel test sheet. FH4 rows use their own `pushout_avg_lb`, `torqueout_avg_inlb`, `pullthru_avg_lb`. These are PEM averages, not spec minimums.

@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { parseCSV, compute } from '../src/logic.js';
 const rd = f => parseCSV(readFileSync(new URL('../data/' + f, import.meta.url), 'utf8'));
-const data = { inserts: rd('hardware_ms21208.csv'), nuts: [...rd('hardware_m45938_1.csv'), ...rd('hardware_pem_sp.csv')], studs: [...rd('hardware_m63540_1.csv'), ...rd('hardware_pem_fh4.csv')], materials: rd('materials.csv'), stack: rd('hardware_stud_stack.csv') };
+const data = { inserts: rd('hardware_ms21208.csv'), nuts: [...rd('hardware_m45938_1.csv'), ...rd('hardware_pem_sp.csv')], studs: [...rd('hardware_m63540_1.csv'), ...rd('hardware_pem_fh4.csv')], materials: rd('materials.csv'), stack: rd('hardware_stud_stack.csv'), studPerf: rd('pem_fh_performance.csv') };
 let fail = 0;
 function check(name, state, expected, extra) {
   const o = compute(state, data);
@@ -112,4 +112,8 @@ if (fail) { console.log(fail + ' failed'); process.exit(1); } else console.log('
   if (!ok) { fail++; console.log('FAIL stud auto length 10-32 .090 -> L .625 (req .530)', o.row.length_L); } else console.log('ok   stud auto length 10-32 .090 -> L .625 (req .530)'); }
 { const o = compute({ type: 'stud', thk: '0.090', len: '.375' }, data); const ok = o.nonCompliant && o.warnings.some(w => w.text.includes('short of the required clearance') && w.actions.some(a => a.patch.len === '.625'));
   if (!ok) { fail++; console.log('FAIL manual short stud warns'); } else console.log('ok   manual short stud warns with shortest-that-clears action'); }
+{ const perf = st => compute(st, data).details.find(d => d[0].startsWith('Push-out / torque-out / pull-thru'));
+  const a = perf({ type: 'stud', material: '6061-T6', thread: '10-32', thk: '0.090' }), b = perf({ type: 'stud', material: 'A1008 CS Type B', thread: '1/4-20', thk: '0.090' }), c = perf({ type: 'stud', material: 'A304 (annealed)', thread: '10-32', thk: '0.060' });
+  const ok = a && a[0].includes('FHS') && a[0].includes('Aluminum') && a[1] === '270 lb / 30 in-lb / 1220 lb' && b && b[0].includes('Steel') && b[1] === '575 lb / 100 in-lb / 2550 lb' && c && c[1] === '800 lb / 95 in-lb / 2250 lb';
+  if (!ok) { fail++; console.log('FAIL stud PEM performance row', a, b, c); } else console.log('ok   stud spec values show PEM push-out / torque-out / pull-thru'); }
 if (fail) process.exitCode = 1;
