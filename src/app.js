@@ -42,7 +42,6 @@ async function init() {
   $('copy-link').addEventListener('click', () => copy(location.href, 'Link copied'));
   $('dl-svg').addEventListener('click', downloadSVG);
   $('dl-png').addEventListener('click', downloadPNG);
-  $('commercial').addEventListener('click', e => e.currentTarget.classList.toggle('open'));
   new ResizeObserver(updateScale).observe(document.querySelector('.gfx-wrap'));
 }
 
@@ -115,8 +114,8 @@ function update(pushHash = true) {
   // commercial reference (grayed, not selectable, never copied)
   const c = $('commercial');
   if (!o.commercial || o.commercial.hidden) c.innerHTML = '';
-  else if (o.commercial.pn) c.innerHTML = `Commercial reference (PEM): ${esc(o.commercial.pn)}, dimensional equivalent, verify before substituting<span class="basis">${esc(o.commercial.basis)}</span>`;
-  else c.innerHTML = `No PEM commercial equivalent for this part<span class="basis">${esc(o.commercial.basis || '')}</span>`;
+  else c.innerHTML = `<span class="ref-k">Commercial reference (PEM)</span><span class="ref-v">${o.commercial.pn ? esc(o.commercial.pn) : 'No PEM equivalent'}</span>` +
+    `<span class="basis">${o.commercial.pn ? 'Dimensional equivalent, reference only. Not part of the note; verify before substituting. ' : ''}${esc(o.commercial.basis || '')}</span>`;
   c.title = o.commercial?.basis || '';
   // warnings
   $('warnings').innerHTML = o.warnings.map((w, i) => `<div class="warn" role="alert"><strong>${w.level === 'caution' ? 'Caution' : 'Check'}</strong>${esc(w.text)}${w.actions.length ? `<div class="acts">${w.actions.map((a, j) => `<button type="button" data-w="${i}" data-a="${j}">${esc(a.label)}</button>`).join('')}</div>` : ''}</div>`).join('');

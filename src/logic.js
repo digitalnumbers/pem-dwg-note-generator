@@ -60,7 +60,7 @@ export function hwMatKey(materialText) {
 const CSK_SYMBOL = { text: 'CSINK', sw: '<MOD-CSK>', unicode: '\u2335' };
 
 export const DEFAULT_STATE = {
-  type: 'insert', material: '6061-T6', thk: '0.700', hole: 'blind', tap: 'plug',
+  type: 'insert', material: '6061-T6', thk: '0.250', hole: 'thru', tap: 'plug',
   thread: '10-32', qty: '4', len: 'auto', side: 'near', hwmat: 'auto',
   pnmode: 'current', csk: 'text', cskAngle: false,
 };
