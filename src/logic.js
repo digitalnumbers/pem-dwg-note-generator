@@ -1,7 +1,7 @@
 // Pure note/validation logic. No DOM access, so it runs in the browser and in Node tests.
 // Rule: every value printed in a note comes straight from a CSV row; nothing is computed into the note.
 
-export const APP_VERSION = "1.4.0";
+export const APP_VERSION = "1.4.1";
 export const THREADS = ['4-40', '8-32', '10-32', '1/4-20'];
 export const MATERIALS = ['5052-H32', '6061-T6', 'A304 (annealed)', 'A1008 CS Type B'];
 
@@ -75,11 +75,11 @@ export function cap3(text) {
 export function num(v) { return parseFloat(String(v).trim()); }
 // "#7 (0.2010)" -> "#7 (\u00d8.201)"
 const drillText = s => s.replace(/\(([\d.]+)\)/, (_, v) => `(${SYM.dia}${dec(v)})`);
-// "120 +/-5 deg" -> "120\u00b0 \u00b15\u00b0" (value and tolerance straight from the CSV).
+// "120 +/-5 deg" -> "120\u00b0". The angle tolerance is covered by the drawing title block, so it is not printed.
 export function angleText(v) {
   const m = String(v || '').match(/^\s*([\d.]+)\s*(?:(?:\+\/-|\u00b1)\s*([\d.]+))?/);
   if (!m) return String(v || '');
-  return `${m[1]}${SYM.deg}${m[2] ? ` ${SYM.pm}${m[2]}${SYM.deg}` : ''}`;
+  return `${m[1]}${SYM.deg}`;
 }
 // Hole size and tolerance for a clinch-hardware hole, at most 3 places. When the spec nominal has more
 // places (.1875 +.003/-.000), both limits are rounded inward so the callout stays inside the spec range.
@@ -254,7 +254,7 @@ function computeInsert(s, data, mat, T, validT, q, sideWord, out) {
     ['Legacy PN / CAGE', `${row.legacy_pn} / ${row.legacy_cage}`],
     ['Insert nominal length Ln', `${dec(row.nominal_length_Ln)} (${num(row.length_dia_mult)}D)`],
     ['Tap minor dia (2B)', `${row.tap_minor_dia_min ? dec(row.tap_minor_dia_min) : 'n/a'} to ${dec(row.tap_minor_dia_max_2B)}`],
-    ['Countersink', `${SYM.dia}${dec(row.csink_dia_min)}-${dec(row.csink_dia_max)}, ${angleText(row.csink_angle)} included angle`],
+    ['Countersink', `${SYM.dia}${dec(row.csink_dia_min)}-${dec(row.csink_dia_max)}, ${angleText(row.csink_angle)} included angle (tolerance per title block)`],
     ['Min drill depth, plug / bottoming tap', `${dec(row.min_drill_depth_plug_tap_FP)} / ${dec(row.min_drill_depth_bottoming_tap_FB)}`],
     ['Min full thread H', dec(row.min_full_thread_H)],
     ['Min thickness, thru hole (csk)', dec(row.min_flange_thk_thru_hole_csk)],
