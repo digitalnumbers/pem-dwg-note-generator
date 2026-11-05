@@ -1,7 +1,7 @@
 // To-scale cross-section renderer. Input: compute(...).geom. Output: SVG markup string.
 // World units are inches. z = depth from the install face into the substrate (0 = install face).
 // Near side: install face on top. Far side: drawing is flipped so the install face is at the bottom.
-import { cap3, fmtThk } from './logic.js?v=1.4.2';
+import { cap3, fmtThk } from './logic.js?v=1.5.0';
 
 export const VB_W = 760;
 let VB_H = 560;

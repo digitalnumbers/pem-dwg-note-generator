@@ -1,7 +1,7 @@
 // Pure note/validation logic. No DOM access, so it runs in the browser and in Node tests.
 // Rule: every value printed in a note comes straight from a CSV row; nothing is computed into the note.
 
-export const APP_VERSION = "1.4.2";
+export const APP_VERSION = "1.5.0";
 export const THREADS = ['4-40', '8-32', '10-32', '1/4-20'];
 export const MATERIALS = ['5052-H32', '6061-T6', 'A304 (annealed)', 'A1008 CS Type B'];
 
@@ -81,19 +81,20 @@ export function angleText(v) {
   if (!m) return String(v || '');
   return `${m[1]}${SYM.deg}`;
 }
-// Hole size and tolerance for a clinch-hardware hole, at most 3 places. When the spec nominal has more
-// places (.1875 +.003/-.000), both limits are rounded inward so the callout stays inside the spec range.
+// Hole size for a clinch-hardware hole, at most 3 places, diameter only (v1.5): the size tolerance is
+// covered by the drawing title block, so it is not printed. When the spec nominal has more places
+// (.1875 +.003/-.000), the nominal is rounded inward (up from the spec minimum) so it stays inside the spec range.
 export function holeSize(dia, tol) {
   const d = String(dia).trim(), t = String(tol || '').trim();
   const places = (d.split('.')[1] || '').length;
   const tm = t.match(/^\+(\d*\.\d+)\s*\/\s*-(\d*\.\d+)$/);
-  if (places <= MAX_PLACES || !tm) return { text: `${SYM.dia}${dec(d)}${t ? ' ' + t : ''}`, nominal: dec(d), adjusted: places > MAX_PLACES };
   const q = x => Math.round(num(x) * 10000);
+  const f = x => dec(x.toFixed(3));
+  const spec = tm ? `${dec(d)} ${t}` : dec(d);
+  if (places <= MAX_PLACES || !tm) return { text: `${SYM.dia}${dec(d)}`, nominal: dec(d), adjusted: false, spec };
   const lo = q(d) - q(tm[2]), hi = q(d) + q(tm[1]);
   const lo3 = Math.ceil(lo / 10) / 1000, hi3 = Math.floor(hi / 10) / 1000;
-  const f = x => dec(x.toFixed(3));
-  const text = q(tm[2]) === 0 ? `${SYM.dia}${f(lo3)} +${f(hi3 - lo3)}/-.000` : `${SYM.dia}${f(lo3)}-${f(hi3)}`;
-  return { text, nominal: f(lo3), adjusted: true, limits: `${f(lo3)}-${f(hi3)}` };
+  return { text: `${SYM.dia}${f(lo3)}`, nominal: f(lo3), adjusted: true, limits: `${f(lo3)}-${f(hi3)}`, spec };
 }
 export function drillDecimal(s) { const m = s.match(/\(([\d.]+)\)/); return m ? num(m[1]) : NaN; }
 
@@ -360,7 +361,8 @@ function computeNut(s, data, mat, T, validT, q, sideWord, out) {
   const { pn, cage } = pnFor(row, s);
   const hs = holeSize(row.hole_dia_in_sheet, row.hole_tol);
   out.prep.push(`${q}${hs.text} THRU`);
-  if (hs.adjusted) out.info.push(`Spec hole limits are rounded inward to 3 places (${hs.limits}) so the callout stays inside the spec range.`);
+  if (hs.adjusted) out.info.push(`Spec hole ${hs.spec} has 4 places; the nominal is rounded inward to ${hs.nominal} so it stays inside the spec range (${hs.limits}).`);
+  out.info.push(`Hole size tolerance is per the drawing title block. Spec hole: ${hs.spec}.`);
   out.install.push('INSTALL SELF-CLINCHING NUT', `PN: ${pn}`, `CAGE: ${cage}`, sideWord);
   out.commercial = { pn: row.commercial_pem_pn, basis: row.commercial_pem_basis, hidden: false, isNotePN: row.commercial_only === 'Y' };
   const edge = row.min_edge_dist_spec || '';
@@ -380,7 +382,7 @@ function computeNut(s, data, mat, T, validT, q, sideWord, out) {
     ['Nut material', row.material],
     ['Max sheet hardness', `${row.max_sheet_hardness_HRB} HRB`],
     ['Sheet thickness range', row.commercial_only === 'Y' ? `${row.sheet_thk_min} min (PEM recommended)` : `${row.sheet_thk_min}-${row.sheet_thk_max || 'up'}`],
-    ['Hole in sheet', `${hs.text} THRU`],
+    ['Hole in sheet', `${hs.text} THRU (spec ${hs.spec}; tolerance per title block)`],
     ['Shank A / body C', `${dec(row.shank_length_A)} / ${dec(row.body_dia_C)}`],
     ['Head E / T', `${row.head_dia_E} / ${row.head_thk_T}`],
     ['Min edge distance', edge || (row.min_edge_dist_vendor_ref ? `illegible in spec (PEM ref ${row.min_edge_dist_vendor_ref})` : 'illegible in spec')],
@@ -397,9 +399,17 @@ function computeStud(s, data, mat, T, validT, q, sideWord, out) {
   const pick = pickHwMat(s, mat, 'm63540', avail);
   out.hwmatChosen = pick.key; out.hwmatAvail = avail;
   const rows = all.filter(r => hwMatKey(r.material) === pick.key).sort((a, b) => num(a.length_L) - num(b.length_L));
+  // Auto length rule (v1.5): L (from the flush head face) must clear 2X the sheet thickness (sheet plus a mating
+  // part of the same thickness) + the mil-spec flat washer + the mil-spec self-locking nut for that thread.
+  // Washer and nut use their spec maximum thickness/height from hardware_stud_stack.csv.
+  const stk = (data.stack || []).find(r => r.thread === s.thread) || null;
+  const stackAdd = stk ? num(stk.washer_thk_max) + num(stk.nut_height_max) : 0;
+  const reqL = validT ? 2 * T + stackAdd : NaN;
+  out.studStack = stk ? { washer: stk.washer_pn, washerMax: stk.washer_thk_max, nut: stk.nut_pn, nutMax: stk.nut_height_max, reqL } : null;
   const protrudes = r => validT && num(r.length_L) > T;
-  out.choices = rows.map(r => ({ value: r.length_L, label: `L ${r.length_L}${validT ? `  (protrudes ${dec((num(r.length_L) - T).toFixed(3))})` : ''}`, fits: protrudes(r) }));
-  const firstFit = rows.find(protrudes);
+  const clears = r => validT && (stk ? num(r.length_L) >= reqL - 1e-9 : protrudes(r));
+  out.choices = rows.map(r => ({ value: r.length_L, label: `L ${r.length_L}${validT && stk ? `  (${num(r.length_L) >= reqL - 1e-9 ? 'clears by' : 'short by'} ${dec(Math.abs(num(r.length_L) - reqL).toFixed(3))})` : validT ? `  (protrudes ${dec((num(r.length_L) - T).toFixed(3))})` : ''}`, fits: clears(r) }));
+  const firstFit = rows.find(clears);
   let row = s.len === 'auto' ? (firstFit || rows[rows.length - 1]) : (rows.find(r => r.length_L === s.len) || firstFit || rows[0]);
   out.row = row; out.autoLen = firstFit ? firstFit.length_L : null;
   out.hwmatReason = pick.ok
@@ -417,16 +427,24 @@ function computeStud(s, data, mat, T, validT, q, sideWord, out) {
   if (validT && !protrudes(row)) {
     out.warnings.push({ text: `Stud length L ${row.length_L} does not protrude past ${fmtThk(T)} in sheet (L is measured from the flush head face).`,
       actions: firstFit ? [{ label: `Use L ${firstFit.length_L}`, patch: { len: firstFit.length_L } }] : [] });
+  } else if (validT && stk && !clears(row)) {
+    const stackTxt = `2 X ${fmtThk(T)} sheet + ${stk.washer_pn} washer ${dec(stk.washer_thk_max)} max + ${stk.nut_pn} nut ${dec(stk.nut_height_max)} max = ${dec(reqL.toFixed(3))} in`;
+    out.warnings.push({ text: firstFit
+        ? `Stud length L ${row.length_L} is short of the required clearance: ${stackTxt}.`
+        : `No confirmed ${hwName(pick.key, 'stud')} ${s.thread} stud length clears ${stackTxt}. Longest available is L ${rows[rows.length - 1].length_L}.`,
+      actions: firstFit && s.len !== 'auto' ? [{ label: `Use L ${firstFit.length_L} (shortest that clears)`, patch: { len: firstFit.length_L } }] : firstFit ? [] : [{ label: 'Use threaded insert instead', patch: { type: 'insert', len: 'auto', hwmat: 'auto' } }] });
   }
   const { pn, cage } = pnFor(row, s);
   const hs = holeSize(row.hole_dia_in_sheet, row.hole_tol);
   out.prep.push(`${q}${hs.text} THRU`);
-  if (hs.adjusted) out.info.push(`Spec hole limits are rounded inward to 3 places (${hs.limits}) so the callout stays inside the spec range.`);
+  if (hs.adjusted) out.info.push(`Spec hole ${hs.spec} has 4 places; the nominal is rounded inward to ${hs.nominal} so it stays inside the spec range (${hs.limits}).`);
+  out.info.push(`Hole size tolerance is per the drawing title block. Spec hole: ${hs.spec}.`);
   out.install.push('INSTALL SELF-CLINCHING STUD', `PN: ${pn}`, `CAGE: ${cage}`, `${sideWord} FLUSH`);
   out.commercial = { pn: row.commercial_pem_pn, basis: row.commercial_pem_basis, hidden: false, isNotePN: row.commercial_only === 'Y' };
   const edge = row.min_edge_dist_spec || '';
   const edgeSrc = row.commercial_only === 'Y' ? 'PEM' : 'spec';
   out.info.push(edge ? `Minimum hole center to sheet edge: ${edge} (${edgeSrc}).` : `Minimum edge distance is not legible in the spec${row.min_edge_dist_vendor_ref ? `; PEM reference value ${row.min_edge_dist_vendor_ref} (not from spec)` : ''}.`);
+  if (stk && validT) out.info.push(`Auto length clears 2 X sheet (${fmtThk(T)} + ${fmtThk(T)} mating part) + ${stk.washer_pn} washer (${dec(stk.washer_thk_max)} max) + ${stk.nut_pn} lock nut (${dec(stk.nut_height_max)} max) = ${dec(reqL.toFixed(3))} in. L ${row.length_L} ${num(row.length_L) >= reqL - 1e-9 ? 'clears by ' + dec((num(row.length_L) - reqL).toFixed(3)) : 'is short by ' + dec((reqL - num(row.length_L)).toFixed(3))} in.`);
   out.info.push(row.commercial_only === 'Y' ? `Recommended mating nut tightening torque: ${row.nut_tightening_torque_max_inlb} in-lb (PEM).` : `Mating nut tightening torque: ${row.nut_tightening_torque_max_inlb} in-lb max.`);
   if (row.commercial_only === 'Y') {
     out.info.push('Install with the PEM special anvil with a raised ring. FH4 is 400-series stainless: magnetic, and not for appreciable corrosive exposure or service above 300\u00b0F (PEM).');
@@ -446,11 +464,16 @@ function computeStud(s, data, mat, T, validT, q, sideWord, out) {
     ['Max sheet hardness', `${row.max_sheet_hardness_HRB} HRB`],
     ['Length L', `${row.length_L} ${row.length_tol} (${row.length_datum})`],
     ['Sheet thickness', row.sheet_thk_max ? `${row.min_sheet_thk}-${row.sheet_thk_max} (PEM)` : `${row.min_sheet_thk} min`],
-    ['Hole in sheet', `${hs.text} THRU`],
+    ['Hole in sheet', `${hs.text} THRU (spec ${hs.spec}; tolerance per title block)`],
     ['Head dia H', `${row.head_dia} ${row.head_dia_tol}`],
     ['Unthreaded length S (max, from head face)', row.unthreaded_S_max],
     ['Min edge distance', edge || `not legible in spec (PEM ref ${row.min_edge_dist_vendor_ref})`],
     ['Protrusion past far face', validT ? dec((num(row.length_L) - T).toFixed(3)) : 'n/a'],
+    ...(stk ? [
+      ['Mating washer (length basis)', `${stk.washer_pn}, ${dec(stk.washer_thk_nom)} ${stk.washer_thk_tol} (${dec(stk.washer_thk_max)} max)`],
+      ['Mating lock nut (length basis)', `${stk.nut_pn}, height ${dec(stk.nut_height_min)}-${dec(stk.nut_height_max)}`],
+      ['Required L (2T + washer + nut)', validT ? dec(reqL.toFixed(3)) : 'n/a'],
+    ] : []),
   ];
 }
 
