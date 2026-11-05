@@ -1,7 +1,7 @@
 // Pure note/validation logic. No DOM access, so it runs in the browser and in Node tests.
 // Rule: every value printed in a note comes straight from a CSV row; nothing is computed into the note.
 
-export const APP_VERSION = "1.1.0";
+export const APP_VERSION = "1.2.0";
 export const THREADS = ['4-40', '8-32', '10-32', '1/4-20'];
 export const MATERIALS = ['5052-H32', '6061-T6', 'A304 (annealed)', 'A1008 CS Type B'];
 
@@ -15,6 +15,8 @@ export const THREAD_GEOM = {
 
 export const HW_MAT_LABEL = { cres: 'CRES', carbon: 'Carbon steel', aluminum: 'Aluminum', pem: 'PEM hardened stainless (commercial only)' };
 const HW_KEYS = ['cres', 'carbon', 'aluminum', 'pem'];
+// Design rule (v1.2): CRES hardware only. Carbon steel and aluminum rows stay in the CSVs as spec record but are never offered.
+export const HW_ALLOWED = ['cres', 'pem'];
 
 // ---------------------------------------------------------------- CSV
 export function parseCSV(text) {
@@ -184,14 +186,17 @@ function computeInsert(s, data, mat, T, validT, q, sideWord, out) {
 }
 
 function pickHwMat(s, mat, family, available) {
-  // family: 'm45938' or 'm63540'. Auto preference: mil CRES, carbon steel, aluminum, then PEM commercial-only.
+  // family: 'm45938' or 'm63540'. Auto preference: mil CRES, then PEM commercial-only (only allowed keys are passed in).
   // A variant with margin wins over one exactly at its limit; a CAUTION variant is used only if nothing is rated.
   const order = HW_KEYS.filter(k => available.includes(k));
   const rule = k => String(mat?.[`${family}_${k}`] || '');
   const ok = k => rule(k).startsWith('OK');
   const caution = k => rule(k).startsWith('CAUTION');
   if (s.hwmat !== 'auto' && available.includes(s.hwmat)) return { key: s.hwmat, auto: false, ok: ok(s.hwmat), caution: caution(s.hwmat) };
-  const first = order.find(k => ok(k) && !/at limit/i.test(rule(k))) || order.find(ok);
+  // Any rated mil variant beats a commercial-only one; within each group, margin beats at-limit.
+  const mil = order.filter(k => k !== 'pem'), com = order.filter(k => k === 'pem');
+  const best = g => g.find(k => ok(k) && !/at limit/i.test(rule(k))) || g.find(ok);
+  const first = best(mil) || best(com);
   if (first) return { key: first, auto: true, ok: true };
   const c = order.find(caution);
   if (c) return { key: c, auto: true, ok: false, caution: true };
@@ -219,11 +224,11 @@ function hardnessWarning(s, mat, family, pick, rowLimit, out) {
   if (pick.ok) {
     if (/at limit/i.test(rule)) {
       const isMax = /^ASTM \S+ maximum/.test(mat?.hardness_basis || '');
-      out.info.push(`${hwName(pick.key, fam)} ${fam}s are rated for sheet up to ${rowLimit} HRB; ${s.material} is ${hardnessText(mat)}${isMax ? ' (spec maximum), so it is within the rating at the limit' : ', a typical value rather than a spec maximum, at the limit'}. Confirm the actual sheet hardness${pick.auto || isMax ? '' : ', or use Auto to select carbon steel'}.`);
+      out.info.push(`${hwName(pick.key, fam)} ${fam}s are rated for sheet up to ${rowLimit} HRB; ${s.material} is ${hardnessText(mat)}${isMax ? ' (spec maximum), so it is within the rating at the limit' : ', a typical value rather than a spec maximum, at the limit'}. Confirm the actual sheet hardness.`);
     }
     return;
   }
-  const anyOk = HW_KEYS.some(k => String(mat?.[`${family}_${k}`] || '').startsWith('OK'));
+  const anyOk = HW_ALLOWED.some(k => String(mat?.[`${family}_${k}`] || '').startsWith('OK'));
   const acts = [];
   if (anyOk && !pick.auto) acts.push({ label: 'Auto-select hardware material', patch: { hwmat: 'auto' } });
   if (!anyOk) acts.push({ label: 'Use threaded insert instead', patch: { type: 'insert', len: 'auto', hwmat: 'auto' } });
@@ -251,7 +256,7 @@ function commercialOnlyInfo(row, fam, out) {
 function computeNut(s, data, mat, T, validT, q, sideWord, out) {
   const all = data.nuts.filter(r => r.thread === s.thread && r.in_app_scope === 'Y');
   if (!all.length) { out.warnings.push({ text: `No confirmed nut data for ${s.thread}.`, actions: [] }); return; }
-  const avail = [...new Set(all.map(r => hwMatKey(r.material)))];
+  const avail = [...new Set(all.map(r => hwMatKey(r.material)))].filter(k => HW_ALLOWED.includes(k));
   const pick = pickHwMat(s, mat, 'm45938', avail);
   out.hwmatChosen = pick.key; out.hwmatAvail = avail;
   const rows = all.filter(r => hwMatKey(r.material) === pick.key).sort((a, b) => num(a.shank_length_A) - num(b.shank_length_A));
@@ -308,7 +313,7 @@ function computeNut(s, data, mat, T, validT, q, sideWord, out) {
 function computeStud(s, data, mat, T, validT, q, sideWord, out) {
   const all = data.studs.filter(r => r.thread === s.thread && r.in_app_scope === 'Y');
   if (!all.length) { out.warnings.push({ text: `No confirmed stud data for ${s.thread}.`, actions: [] }); return; }
-  const avail = [...new Set(all.map(r => hwMatKey(r.material)))];
+  const avail = [...new Set(all.map(r => hwMatKey(r.material)))].filter(k => HW_ALLOWED.includes(k));
   const pick = pickHwMat(s, mat, 'm63540', avail);
   out.hwmatChosen = pick.key; out.hwmatAvail = avail;
   const rows = all.filter(r => hwMatKey(r.material) === pick.key).sort((a, b) => num(a.length_L) - num(b.length_L));

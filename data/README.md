@@ -1,4 +1,4 @@
-# Hardware data (v0.9, confirmed-only)
+# Hardware data (v0.10, confirmed-only)
 
 | File | Rows | Content |
 |---|---|---|
@@ -19,6 +19,10 @@ Rules
 - Stud `unthreaded_S_max` is MIL-S-63540/1A Table I "S MAX": the maximum unthreaded length under the head (renamed from `head_height_max` in v0.7). The spec gives no head thickness.
 - Hardware larger than 1/4 is out of scope for now. 5-40 inserts are excluded because no drill recommendation was confirmed. M63540/1-57 (listed by PEM but not in MIL-S-63540/1A) is excluded.
 
+Hardware material rule (v0.10)
+- CRES hardware only. The app never offers carbon steel or aluminum nuts and studs. Those rows stay in `hardware_m45938_1.csv` and `hardware_m63540_1.csv` (and their `m45938_carbon`, `m45938_aluminum`, `m63540_carbon` columns in `materials.csv`) as a complete record of the spec, but are filtered out in the app.
+- Allowed: mil CRES (M45938/1-xxC, M63540/1-xxC) and PEM hardened stainless SP and FH4 (commercial only). Auto-select uses mil CRES whenever it is rated, including at its limit, and uses SP or FH4 only when no mil CRES part is rated.
+
 Commercial-only PEM rows (SP, FH4)
 - Source: PEM bulletin SS, Fasteners For Use In Stainless Steel Sheets, rev 10/13/26. SP dimensions pg SS-3, FH4 pg SS-10, material pg SS-15, performance pg SS-23/24, Dos and Don'ts pg SS-27. Checked against the page images.
 - SP: rated for stainless sheet HRB 90 / HB 192 or less. Shank code chosen as the longest shank whose recommended minimum sheet thickness fits; PEM publishes no maximum sheet thickness. Performance values are PEM averages in 304 stainless, stored in `*_avg` columns, not spec minimums.
@@ -27,7 +31,7 @@ Commercial-only PEM rows (SP, FH4)
 
 Material notes
 - A304: ASTM A240 maximum 92 HRB exceeds every M45938/1 and M63540/1 limit. FH4 (92) is at its limit and compliant; SP (90) is below the A240 maximum, so the app warns to confirm sheet hardness or use a helical insert.
-- A1008 CS Type B: 70 HRB or less is a typical value from the nonmandatory ASTM A1008 Table X3.1, not a spec limit. Carbon steel mil nuts (85) and studs (80) have margin and are auto-selected; CRES (70) is at its limit.
+- A1008 CS Type B: 70 HRB or less is a typical value from the nonmandatory ASTM A1008 Table X3.1, not a spec limit. CRES nuts and studs (70) are at their limit and are auto-selected under the CRES-only rule, with a note to confirm actual sheet hardness.
 
 Open items
 - MIL-N-45938/1B Amendment 1 (1997) has not been reviewed. NASM45938/1 and NASM63540/1 current revisions are paywalled and not reviewed.

@@ -35,8 +35,8 @@ check('legacy PN mode keeps PEM CAGE for commercial-only rows', { type: 'stud', 
   ['4X THRU .189 +.003/-.000', 'INSTALL SELF-CLINCHING STUD', 'PN: FH4-032-5', 'CAGE: 46384', 'NEAR SIDE FLUSH']);
 check('6061 nut auto still picks mil CRES, not PEM', { type: 'nut', thk: '0.090' },
   ['4X THRU .250 +.003/-.000', 'INSTALL SELF-CLINCHING NUT', 'PN: M45938/1-16C', 'CAGE: 80205', 'NEAR SIDE'], o => !o.commercialOnly);
-check('nut aluminum forced in 6061 -> warn', { type: 'nut', hwmat: 'aluminum', thk: '0.090' },
-  ['4X THRU .296 +.003/-.000', 'INSTALL SELF-CLINCHING NUT', 'PN: M45938/1-18A', 'CAGE: 80205', 'NEAR SIDE'], o => o.nonCompliant);
+check('nut aluminum requested in 6061 -> ignored, CRES used', { type: 'nut', hwmat: 'aluminum', thk: '0.090' },
+  ['4X THRU .250 +.003/-.000', 'INSTALL SELF-CLINCHING NUT', 'PN: M45938/1-16C', 'CAGE: 80205', 'NEAR SIDE'], o => o.hwmatChosen === 'cres' && !o.hwmatAvail.includes('aluminum') && !o.hwmatAvail.includes('carbon'));
 check('stud PRD example 10-32 .625 CRES near flush', { type: 'stud', thk: '0.090', len: '.625' },
   ['4X THRU .189 +.003/-.000', 'INSTALL SELF-CLINCHING STUD', 'PN: M63540/1-38C', 'CAGE: 80205', 'NEAR SIDE FLUSH'], o => o.commercial.pn === 'FHS-032-10');
 check('stud 1/4-20 thin sheet warning', { type: 'stud', thread: '1/4-20', thk: '0.050', side: 'far' },
@@ -53,12 +53,12 @@ check('app default (10-32 insert, 6061-T6, .250 thru)', {},
   ['4X DRILL #7 (.2010) THRU', 'CSINK .230-.260', 'TAP 10-32 STI THRU', 'INSTALL THREADED INSERT', 'BREAK TANG', 'PN: MS124655', 'CAGE: 80205', 'NEAR SIDE'], o => !o.nonCompliant && o.state.thk === '0.250' && o.state.hole === 'thru');
 check('A1008 insert uses steel drill column', { material: 'A1008 CS Type B' },
   ['4X DRILL 13/64 (.2031) THRU', 'CSINK .230-.260', 'TAP 10-32 STI THRU', 'INSTALL THREADED INSERT', 'BREAK TANG', 'PN: MS124655', 'CAGE: 80205', 'NEAR SIDE'], o => !o.nonCompliant);
-check('A1008 nut auto -> carbon steel (CRES at limit)', { type: 'nut', material: 'A1008 CS Type B', thk: '0.090' },
-  ['4X THRU .250 +.003/-.000', 'INSTALL SELF-CLINCHING NUT', 'PN: M45938/1-16', 'CAGE: 80205', 'NEAR SIDE'], o => o.hwmatChosen === 'carbon' && o.commercial.pn === 'SS-032-2' && !o.nonCompliant);
-check('A1008 nut forced CRES -> compliant with at-limit info', { type: 'nut', material: 'A1008 CS Type B', thk: '0.090', hwmat: 'cres' },
-  ['4X THRU .250 +.003/-.000', 'INSTALL SELF-CLINCHING NUT', 'PN: M45938/1-16C', 'CAGE: 80205', 'NEAR SIDE'], o => !o.nonCompliant && o.info.some(t => t.includes('at the limit')));
-check('A1008 nut forced aluminum -> warn', { type: 'nut', material: 'A1008 CS Type B', thk: '0.090', hwmat: 'aluminum' },
-  ['4X THRU .296 +.003/-.000', 'INSTALL SELF-CLINCHING NUT', 'PN: M45938/1-18A', 'CAGE: 80205', 'NEAR SIDE'], o => o.nonCompliant);
-check('A1008 stud auto -> carbon steel', { type: 'stud', material: 'A1008 CS Type B', thk: '0.090', len: '.625' },
-  ['4X THRU .189 +.003/-.000', 'INSTALL SELF-CLINCHING STUD', 'PN: M63540/1-38', 'CAGE: 80205', 'NEAR SIDE FLUSH'], o => o.hwmatChosen === 'carbon' && o.commercial.pn === 'FH-032-10' && !o.nonCompliant);
+check('A1008 nut auto -> CRES at limit (carbon not allowed)', { type: 'nut', material: 'A1008 CS Type B', thk: '0.090' },
+  ['4X THRU .250 +.003/-.000', 'INSTALL SELF-CLINCHING NUT', 'PN: M45938/1-16C', 'CAGE: 80205', 'NEAR SIDE'], o => o.hwmatChosen === 'cres' && !o.nonCompliant && o.info.some(t => t.includes('at the limit')));
+check('A1008 nut carbon requested -> ignored, CRES used', { type: 'nut', material: 'A1008 CS Type B', thk: '0.090', hwmat: 'carbon' },
+  ['4X THRU .250 +.003/-.000', 'INSTALL SELF-CLINCHING NUT', 'PN: M45938/1-16C', 'CAGE: 80205', 'NEAR SIDE'], o => o.hwmatChosen === 'cres');
+check('A1008 stud auto -> CRES at limit', { type: 'stud', material: 'A1008 CS Type B', thk: '0.090', len: '.625' },
+  ['4X THRU .189 +.003/-.000', 'INSTALL SELF-CLINCHING STUD', 'PN: M63540/1-38C', 'CAGE: 80205', 'NEAR SIDE FLUSH'], o => o.hwmatChosen === 'cres' && !o.nonCompliant);
+check('5052 stud and nut never offer carbon or aluminum', { type: 'stud', material: '5052-H32', thk: '0.090', len: '.625' },
+  ['4X THRU .189 +.003/-.000', 'INSTALL SELF-CLINCHING STUD', 'PN: M63540/1-38C', 'CAGE: 80205', 'NEAR SIDE FLUSH'], o => o.hwmatAvail.join() === 'cres,pem');
 if (fail) { console.log(fail + ' failed'); process.exit(1); } else console.log('all passed');
