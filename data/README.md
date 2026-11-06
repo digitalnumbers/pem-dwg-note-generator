@@ -56,3 +56,6 @@ Commercial PEM reference (reference only, never printed in the note)
 Clinch-hardware drills (v1.7)
 - `clinch_drills.csv` maps each nut and stud spec hole (`hole_dia_in_sheet`, `hole_tol`) to a standard inch drill (number, letter or fractional) and its decimal size (S-DRILL). Nut and stud notes print `DRILL <size> (Ø<decimal>) THRU`, the same style as insert notes.
 - The drill is the standard inch drill at or just above the spec minimum. Two exceptions: .163 uses #19 (.166), at the spec maximum, because no standard inch drill falls inside .163-.166 below it; .344 uses 11/32 (.3438), two ten-thousandths under the spec minimum, because no standard inch drill falls inside .344-.347. The app shows an info line for these and for .249 (1/4, .250).
+
+## shank_code (v1.7.6)
+- `shank_code` column in `hardware_m45938_1.csv` and `hardware_pem_sp.csv`: PEM shank code, taken from the last dash of `commercial_pem_pn` (PEM CL/SP data sheets). Printed on the nut INSTALL line instead of shank length A. Blank only for out-of-scope rows with no PEM match.

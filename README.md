@@ -24,6 +24,7 @@ Threads in v1: 4-40, 8-32, 10-32, 1/4-20. Substrates: 5052-H32 (default), 6061-T
 - Stud length (v1.7.3): Auto picks the shortest L that covers 2X sheet + NAS1149 washer + lock nut. That length is a suggestion only; a shorter stud is accepted with an info line. The app warns only when L does not clear (protrude past) the sheet.
 - Stud spec values include PEM push-out, torque-out and pull-thru averages (`data/pem_fh_performance.csv`; FH4 values from its own CSV). These are PEM averages for reference, not spec minimums.
 - Quantity (v1.7.4): pick 1-50 from the dropdown or type any whole number, same combobox as substrate thickness.
+- Hardware size (v1.7.7): the INSTALL line states the size. Studs and inserts print THREAD x LENGTH (`INSTALL 10-32 x .625 SELF-CLINCHING STUD`, stud length L; `INSTALL 10-32 x .190 THREADED INSERT`, insert nominal length Ln). Clinch nuts print the PEM shank code instead of a length (`INSTALL 10-32 SHANK 2 SELF-CLINCHING NUT`), from the `shank_code` column (last dash of the matching PEM PN).
 - The selection lives in the URL hash, so a link reproduces a note.
 
 ## Run locally

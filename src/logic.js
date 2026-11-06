@@ -1,7 +1,10 @@
 // Pure note/validation logic. No DOM access, so it runs in the browser and in Node tests.
+// v1.7.5: INSTALL line states hardware size as THREAD x LENGTH (stud L, nut shank A, insert nominal Ln), all from the CSV row.
+// v1.7.6: nuts state PEM shank code (shank_code column, last dash of the PEM PN) instead of shank length A.
+// v1.7.7: nut INSTALL line prints "SHANK <code>" (word CODE removed).
 // Rule: every value printed in a note comes straight from a CSV row; nothing is computed into the note.
 
-export const APP_VERSION = "1.7.4";
+export const APP_VERSION = "1.7.7";
 export const THREADS = ['4-40', '8-32', '10-32', '1/4-20'];
 export const MATERIALS = ['5052-H32', '6061-T6', 'A304 (annealed)', 'A1008 CS Type B'];
 
@@ -257,7 +260,7 @@ function computeInsert(s, data, mat, T, validT, q, sideWord, out) {
   } else {
     out.prep.push(`${q}DRILL ${drill} THRU`, csk, `TAP ${row.tap} THRU`);
   }
-  out.install.push('INSTALL THREADED INSERT', 'BREAK TANG', `PN: ${pn} UNCOATED`, `CAGE: ${cage}`, sideWord);
+  out.install.push(`INSTALL ${s.thread} x ${dec(row.nominal_length_Ln)} THREADED INSERT`, 'BREAK TANG', `PN: ${pn} UNCOATED`, `CAGE: ${cage}`, sideWord);
   out.commercial = { pn: row.commercial_pem_pn, basis: row.commercial_pem_basis, hidden: false, brand: 'Heli-Coil' };
   if (s.hole === 'blind' && validT) out.info.push(`MIN DEPTH is to full drill diameter. The 118\u00b0 point reaches about ${dec(tip(row).toFixed(3))} in, leaving about ${dec(Math.max(0, T - tip(row)).toFixed(3))} in of material below the point at minimum depth.`);
   const tg = THREAD_GEOM[s.thread];
@@ -378,7 +381,7 @@ function computeNut(s, data, mat, T, validT, q, sideWord, out) {
   const { pn, cage } = pnFor(row, s);
   const hs = holeSize(row.hole_dia_in_sheet, row.hole_tol);
   const dr = clinchPrep(row, data, hs, q, out);
-  out.install.push('INSTALL SELF-CLINCHING NUT', `PN: ${pn}`, `CAGE: ${cage}`, sideWord);
+  out.install.push(`INSTALL ${s.thread} SHANK ${row.shank_code} SELF-CLINCHING NUT`, `PN: ${pn}`, `CAGE: ${cage}`, sideWord);
   out.commercial = { pn: row.commercial_pem_pn, basis: row.commercial_pem_basis, hidden: false, isNotePN: row.commercial_only === 'Y' };
   const edge = row.min_edge_dist_spec || '';
   const edgeSrc = row.commercial_only === 'Y' ? 'PEM' : 'spec';
@@ -463,7 +466,7 @@ function computeStud(s, data, mat, T, validT, q, sideWord, out) {
   const { pn, cage } = pnFor(row, s);
   const hs = holeSize(row.hole_dia_in_sheet, row.hole_tol);
   const dr = clinchPrep(row, data, hs, q, out);
-  out.install.push('INSTALL SELF-CLINCHING STUD', `PN: ${pn}`, `CAGE: ${cage}`, `${sideWord} FLUSH`);
+  out.install.push(`INSTALL ${s.thread} x ${dec(row.length_L)} SELF-CLINCHING STUD`, `PN: ${pn}`, `CAGE: ${cage}`, `${sideWord} FLUSH`);
   out.commercial = { pn: row.commercial_pem_pn, basis: row.commercial_pem_basis, hidden: false, isNotePN: row.commercial_only === 'Y' };
   const edge = row.min_edge_dist_spec || '';
   const edgeSrc = row.commercial_only === 'Y' ? 'PEM' : 'spec';
