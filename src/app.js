@@ -1,5 +1,5 @@
-import { APP_VERSION, THREADS, MATERIALS, HW_MAT_LABEL, DEFAULT_STATE, parseCSV, compute, encodeState, decodeState, stdThicknesses, stdName, dec } from './logic.js?v=1.6.0';
-import { drawSection, VB_W } from './drawing.js?v=1.6.0';
+import { APP_VERSION, THREADS, MATERIALS, HW_MAT_LABEL, DEFAULT_STATE, parseCSV, compute, encodeState, decodeState, stdThicknesses, stdName, dec } from './logic.js?v=1.7.0';
+import { drawSection, VB_W } from './drawing.js?v=1.7.0';
 
 const $ = id => document.getElementById(id);
 const form = $('form');
@@ -18,9 +18,9 @@ async function init() {
   $('material').innerHTML = MATERIALS.map(m => `<option value="${m}">${m}</option>`).join('');
   $('threads').innerHTML = THREADS.map(t => `<label><input type="radio" name="thread" value="${t}"><span>${t}</span></label>`).join('');
   try {
-    const [inserts, nuts, studs, spNuts, fh4Studs, materials, src, stack, studPerf] = await Promise.all(['hardware_ms21208.csv', 'hardware_m45938_1.csv', 'hardware_m63540_1.csv', 'hardware_pem_sp.csv', 'hardware_pem_fh4.csv', 'materials.csv', 'sources.csv', 'hardware_stud_stack.csv', 'pem_fh_performance.csv'].map(loadCSV));
+    const [inserts, nuts, studs, spNuts, fh4Studs, materials, src, stack, studPerf, clinchDrills] = await Promise.all(['hardware_ms21208.csv', 'hardware_m45938_1.csv', 'hardware_m63540_1.csv', 'hardware_pem_sp.csv', 'hardware_pem_fh4.csv', 'materials.csv', 'sources.csv', 'hardware_stud_stack.csv', 'pem_fh_performance.csv', 'clinch_drills.csv'].map(loadCSV));
     // Commercial-only PEM rows (no mil PN) join the same pools; auto-select uses them only when no mil part is rated.
-    data = { inserts, nuts: [...nuts, ...spNuts], studs: [...studs, ...fh4Studs], materials, stack, studPerf };
+    data = { inserts, nuts: [...nuts, ...spNuts], studs: [...studs, ...fh4Studs], materials, stack, studPerf, clinchDrills };
     for (const r of src) sources[r.id] = r;
   } catch (e) {
     $('note').textContent = 'Could not load the spec data files. ' + e.message;
@@ -219,7 +219,8 @@ function update(pushHash = true) {
   // Material hardness sources, minus the other hardware family's spec.
   const skip = o.commercialOnly ? ['S-45938', 'S-63540'] : { insert: ['S-45938', 'S-63540', 'S-PEMSS'], nut: ['S-63540', 'S-PEMSS'], stud: ['S-45938', 'S-PEMSS'] }[state.type];
   const stackSrc = state.type === 'stud' ? ((data.stack.find(r => r.thread === state.thread)?.sources || '').match(/S-[A-Z0-9-]+/g) || []) : [];
-  const ids = [...new Set([...((o.row?.sources || '').match(/S-[A-Z0-9-]+/g) || []), ...stackSrc, ...matSrc.filter(id => !skip.includes(id)), o.commercialOnly ? 'S-PEMCAGE' : { insert: 'S-CAGE-INS', nut: 'S-CAGE-NUT', stud: 'S-CAGE-STUD' }[state.type]])];
+  const drillSrc = state.type !== 'insert' && o.row ? ['S-DRILL'] : [];
+  const ids = [...new Set([...((o.row?.sources || '').match(/S-[A-Z0-9-]+/g) || []), ...stackSrc, ...drillSrc, ...matSrc.filter(id => !skip.includes(id)), o.commercialOnly ? 'S-PEMCAGE' : { insert: 'S-CAGE-INS', nut: 'S-CAGE-NUT', stud: 'S-CAGE-STUD' }[state.type]])];
   $('sources').innerHTML = ids.map(id => sources[id] ? `<li><a href="${esc(sources[id].url)}" target="_blank" rel="noopener">${esc(sources[id].document)}</a></li>` : '').join('') +
     (o.row?.verification ? `<li class="ver">Verification: ${esc(o.row.verification)}</li>` : '');
   // graphic

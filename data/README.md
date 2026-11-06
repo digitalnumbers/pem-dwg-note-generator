@@ -52,4 +52,7 @@ Commercial PEM reference (reference only, never printed in the note)
 - For commercial-only rows, `commercial_pem_pn` equals `note_pn`.
 - In hardware_ms21208.csv, `commercial_pem_pn` holds the Heli-Coil commercial PN (1185 coarse / 1191 fine, plain finish) cross-referenced from the MS122xxx/MS124xxx PN (S-HCXREF).
 - Blank for all inserts (no PEM helical insert) and for nuts without a matching PEM shank length (M45938/1-1A, -19A, -20A).
-- `pem_fh_performance.csv` (v1.6): PEM FH/FHS flush-head stud averages from the FH data sheet pg FH-29 (installation force, push-out, torque-out, pull-thru, test sheet and HRB). Mil M63540/1 studs show the matching FH (carbon) or FHS (CRES) row in the aluminum test sheet for aluminum substrates, else the steel test sheet. FH4 rows use their own `pushout_avg_lb`, `torqueout_avg_inlb`, `pullthru_avg_lb`. These are PEM averages, not spec minimums.
+
+Clinch-hardware drills (v1.7)
+- `clinch_drills.csv` maps each nut and stud spec hole (`hole_dia_in_sheet`, `hole_tol`) to a standard inch drill (number, letter or fractional) and its decimal size (S-DRILL). Nut and stud notes print `DRILL <size> (Ø<decimal>) THRU`, the same style as insert notes.
+- The drill is the standard inch drill at or just above the spec minimum. Two exceptions: .163 uses #19 (.166), at the spec maximum, because no standard inch drill falls inside .163-.166 below it; .344 uses 11/32 (.3438), two ten-thousandths under the spec minimum, because no standard inch drill falls inside .344-.347. The app shows an info line for these and for .249 (1/4, .250).

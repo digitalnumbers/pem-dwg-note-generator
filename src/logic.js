@@ -1,7 +1,7 @@
 // Pure note/validation logic. No DOM access, so it runs in the browser and in Node tests.
 // Rule: every value printed in a note comes straight from a CSV row; nothing is computed into the note.
 
-export const APP_VERSION = "1.6.0";
+export const APP_VERSION = "1.7.0";
 export const THREADS = ['4-40', '8-32', '10-32', '1/4-20'];
 export const MATERIALS = ['5052-H32', '6061-T6', 'A304 (annealed)', 'A1008 CS Type B'];
 
@@ -95,6 +95,24 @@ export function holeSize(dia, tol) {
   const lo = q(d) - q(tm[2]), hi = q(d) + q(tm[1]);
   const lo3 = Math.ceil(lo / 10) / 1000, hi3 = Math.floor(hi / 10) / 1000;
   return { text: `${SYM.dia}${f(lo3)}`, nominal: f(lo3), adjusted: true, limits: `${f(lo3)}-${f(hi3)}`, spec };
+}
+// Clinch-hardware drill (v1.7): standard drill for the spec hole, from clinch_drills.csv (matched on the
+// spec hole diameter and tolerance). The note prints the drill and its decimal, the same style as inserts.
+export function clinchDrill(row, data) {
+  const d = (data.clinchDrills || []).find(r => num(r.hole_dia_in_sheet) === num(row.hole_dia_in_sheet) && String(r.hole_tol).trim() === String(row.hole_tol || '').trim());
+  if (!d) return null;
+  return { ...d, label: `${d.drill} (${SYM.dia}${dec(d.drill_dia)})` };
+}
+function clinchPrep(row, data, hs, q, out) {
+  const dr = clinchDrill(row, data);
+  if (dr) {
+    out.prep.push(`${q}DRILL ${dr.label} THRU`);
+    if (num(dr.drill_dia) !== num(row.hole_dia_in_sheet) || hs.adjusted) out.info.push(`Drill ${dr.drill} (${dr.drill_dia}) is used for the spec hole ${hs.spec} (${dr.spec_min}-${dr.spec_max}): ${dr.fit}.`);
+  } else {
+    out.prep.push(`${q}${hs.text} THRU`);
+    if (hs.adjusted) out.info.push(`Spec hole ${hs.spec} has 4 places; the nominal is rounded inward to ${hs.nominal} so it stays inside the spec range (${hs.limits}).`);
+  }
+  return dr;
 }
 export function drillDecimal(s) { const m = s.match(/\(([\d.]+)\)/); return m ? num(m[1]) : NaN; }
 
@@ -359,8 +377,7 @@ function computeNut(s, data, mat, T, validT, q, sideWord, out) {
   }
   const { pn, cage } = pnFor(row, s);
   const hs = holeSize(row.hole_dia_in_sheet, row.hole_tol);
-  out.prep.push(`${q}${hs.text} THRU`);
-  if (hs.adjusted) out.info.push(`Spec hole ${hs.spec} has 4 places; the nominal is rounded inward to ${hs.nominal} so it stays inside the spec range (${hs.limits}).`);
+  const dr = clinchPrep(row, data, hs, q, out);
   out.install.push('INSTALL SELF-CLINCHING NUT', `PN: ${pn}`, `CAGE: ${cage}`, sideWord);
   out.commercial = { pn: row.commercial_pem_pn, basis: row.commercial_pem_basis, hidden: false, isNotePN: row.commercial_only === 'Y' };
   const edge = row.min_edge_dist_spec || '';
@@ -369,7 +386,7 @@ function computeNut(s, data, mat, T, validT, q, sideWord, out) {
   const tg = THREAD_GEOM[s.thread];
   out.geom = {
     kind: 'nut', T, side: s.side, P: 1 / tg.tpi, D: tg.D, tpi: tg.tpi,
-    hole: num(row.hole_dia_in_sheet), holeLabel: hs.text.split(' ')[0], C: num(row.body_dia_C), E: num(row.head_dia_E), Eh: num(row.head_thk_T),
+    hole: dr ? num(dr.drill_dia) : num(row.hole_dia_in_sheet), holeLabel: dr ? `DRILL ${dr.label}` : `HOLE ${hs.text.split(' ')[0]}`, C: num(row.body_dia_C), E: num(row.head_dia_E), Eh: num(row.head_thk_T),
     A: num(row.shank_length_A), ALabel: row.shank_length_A, ELabel: row.head_dia_E, EhLabel: row.head_thk_T,
   };
   out.details = [
@@ -379,6 +396,7 @@ function computeNut(s, data, mat, T, validT, q, sideWord, out) {
     ['Max sheet hardness', `${row.max_sheet_hardness_HRB} HRB`],
     ['Sheet thickness range', row.commercial_only === 'Y' ? `${row.sheet_thk_min} min (PEM recommended)` : `${row.sheet_thk_min}-${row.sheet_thk_max || 'up'}`],
     ['Hole in sheet', `${hs.text} THRU (spec ${hs.spec}; tolerance per title block)`],
+    ['Drill', dr ? `${dr.drill} (${dr.drill_dia}), ${dr.fit}` : 'no standard drill listed'],
     ['Shank A / body C', `${dec(row.shank_length_A)} / ${dec(row.body_dia_C)}`],
     ['Head E / T', `${row.head_dia_E} / ${row.head_thk_T}`],
     ['Min edge distance', edge || (row.min_edge_dist_vendor_ref ? `illegible in spec (PEM ref ${row.min_edge_dist_vendor_ref})` : 'illegible in spec')],
@@ -446,8 +464,7 @@ function computeStud(s, data, mat, T, validT, q, sideWord, out) {
   }
   const { pn, cage } = pnFor(row, s);
   const hs = holeSize(row.hole_dia_in_sheet, row.hole_tol);
-  out.prep.push(`${q}${hs.text} THRU`);
-  if (hs.adjusted) out.info.push(`Spec hole ${hs.spec} has 4 places; the nominal is rounded inward to ${hs.nominal} so it stays inside the spec range (${hs.limits}).`);
+  const dr = clinchPrep(row, data, hs, q, out);
   out.install.push('INSTALL SELF-CLINCHING STUD', `PN: ${pn}`, `CAGE: ${cage}`, `${sideWord} FLUSH`);
   out.commercial = { pn: row.commercial_pem_pn, basis: row.commercial_pem_basis, hidden: false, isNotePN: row.commercial_only === 'Y' };
   const edge = row.min_edge_dist_spec || '';
@@ -461,7 +478,7 @@ function computeStud(s, data, mat, T, validT, q, sideWord, out) {
   const tg = THREAD_GEOM[s.thread];
   out.geom = {
     kind: 'stud', T, side: s.side, P: 1 / tg.tpi, D: tg.D, tpi: tg.tpi,
-    hole: num(row.hole_dia_in_sheet), holeLabel: hs.text.split(' ')[0], headD: num(row.head_dia), S: num(row.unthreaded_S_max), SLabel: row.unthreaded_S_max, minSheet: num(row.min_sheet_thk),
+    hole: dr ? num(dr.drill_dia) : num(row.hole_dia_in_sheet), holeLabel: dr ? `DRILL ${dr.label}` : `HOLE ${hs.text.split(' ')[0]}`, headD: num(row.head_dia), S: num(row.unthreaded_S_max), SLabel: row.unthreaded_S_max, minSheet: num(row.min_sheet_thk),
     headDLabel: row.head_dia, L: num(row.length_L), LLabel: row.length_L,
   };
   out.details = [
@@ -472,6 +489,7 @@ function computeStud(s, data, mat, T, validT, q, sideWord, out) {
     ['Length L', `${row.length_L} ${row.length_tol} (${row.length_datum})`],
     ['Sheet thickness', row.sheet_thk_max ? `${row.min_sheet_thk}-${row.sheet_thk_max} (PEM)` : `${row.min_sheet_thk} min`],
     ['Hole in sheet', `${hs.text} THRU (spec ${hs.spec}; tolerance per title block)`],
+    ['Drill', dr ? `${dr.drill} (${dr.drill_dia}), ${dr.fit}` : 'no standard drill listed'],
     ['Head dia H', `${row.head_dia} ${row.head_dia_tol}`],
     ['Unthreaded length S (max, from head face)', row.unthreaded_S_max],
     ['Min edge distance', edge || `not legible in spec (PEM ref ${row.min_edge_dist_vendor_ref})`],

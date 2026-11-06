@@ -1,7 +1,7 @@
 // To-scale cross-section renderer. Input: compute(...).geom. Output: SVG markup string.
 // World units are inches. z = depth from the install face into the substrate (0 = install face).
 // Near side: install face on top. Far side: drawing is flipped so the install face is at the bottom.
-import { cap3, fmtThk } from './logic.js?v=1.6.0';
+import { cap3, fmtThk } from './logic.js?v=1.7.0';
 
 export const VB_W = 760;
 let VB_H = 560;
@@ -178,7 +178,7 @@ export function drawSection(g, opts = {}) {
     dims.push(dimV(dx, -g.Eh, 0, `HEAD ${g.EhLabel}`, X(g.E / 2)));
     dims.push(dimV(dx + 110, 0, g.A, `A ${String(g.ALabel).replace(/^0\./, '.')}`, X(g.C / 2)));
     dims.push(dimH(Y(-g.Eh) + out(36), g.E / 2, `E ${g.ELabel}`, Y(-g.Eh), 'right'));
-    dims.push(dimH(Y(T) - out(40), hR, `HOLE ${g.holeLabel}`, Y(T), 'left'));
+    dims.push(dimH(Y(T) - out(40), hR, g.holeLabel, Y(T), 'left'));
     dims.push(leader(X(-(rMin + rMaj) / 2), Y(-g.Eh * 0.4), X(-g.E / 2) - 40, Y(-g.Eh) + out(36), `${f3(P_)} P (${g.tpi} TPI)`));
   } else {
     // Head thickness is not given by the spec (flush head, sheet >= min_sheet_thk); drawn schematic at half the min sheet.
@@ -200,7 +200,7 @@ export function drawSection(g, opts = {}) {
     if (g.L > T) dims.push(dimV(dx + 96, T, g.L, `PROTRUDES ${f3(g.L - T)}`, X(rMaj)));
     dims.push(dimV(X(g.headD / 2) + 16, 0, zS, `S ${g.SLabel} MAX`, X(rMaj)));
     dims.push(dimH(installY + out(40), g.headD / 2, `HEAD ${g.headDLabel}`, installY, 'right'));
-    dims.push(leader(X(-hR), Y((H + T) / 2), X(-halfW) - 46, Y(T) - out(-1) * 0 + (near ? 30 : -30), `HOLE ${g.holeLabel}`));
+    dims.push(leader(X(-hR), Y((H + T) / 2), X(-halfW) - 46, Y(T) - out(-1) * 0 + (near ? 30 : -30), g.holeLabel));
     const zP = T + (g.L - T) * 0.5;
     if (g.L > T + 2 * P_) dims.push(leader(X(-rMaj), Y(zP), X(-rMaj) - 70, Y(zP) + (near ? 18 : -18), `${f3(P_)} P (${g.tpi} TPI)`));
   }

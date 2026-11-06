@@ -14,6 +14,7 @@ Threads in v1: 4-40, 8-32, 10-32, 1/4-20. Substrates: 5052-H32, 6061-T6, A304 (a
 - Note symbols (v1.4), for pasting into SolidWorks notes: `<HOLE-SINK>` countersink, `<HOLE-DEPTH>` depth, `Ø` diameter, `°` degree. Per ASME Y14.5, the symbol precedes its dimension with no space.
 - Countersinks are always called out with diameter and included angle (ASME Y14.5-2018 4.5.12). Inserts print `<HOLE-SINK>Ø.230-.260 X 120°`, with the angle from `csink_angle` (NASM33537). The angle tolerance is not printed; the drawing title block covers it.
 - Values are shown with at most 3 decimal places (half-up rounding, so drill #7 .2010 prints as .201). A clinch hole nominal with more places has both limits rounded inward to stay inside the spec range.
+- Clinch nut and stud holes (v1.7) print the standard drill and its decimal, the same style as inserts: `4X DRILL #3 (Ø.213) THRU`. Drills come from `data/clinch_drills.csv`; where no standard inch drill falls inside the spec range (.163 and .344 holes) the app shows an info line.
 - Selections that break a spec rule are flagged, with one-click fixes, but still allowed.
 - Blind insert holes must keep MIN DEPTH plus the 118 deg drill point inside the material.
 - Clinch hardware is CRES only. Carbon steel and aluminum rows stay in the CSVs as a spec record but the app never offers them.

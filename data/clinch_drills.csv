@@ -1,0 +1,12 @@
+hole_dia_in_sheet,hole_tol,spec_min,spec_max,drill,drill_dia,fit,sources
+.111,+.003/-.000,.111,.114,#34,.1110,at spec minimum,S-DRILL
+.163,+.003/-.000,.163,.166,#19,.1660,at spec maximum (no standard inch drill falls between .163 and .166),S-DRILL
+.166,+.003/-.000,.166,.169,#19,.1660,at spec minimum,S-DRILL
+.1875,+.003/-.000,.1875,.1905,3/16,.1875,at spec minimum,S-DRILL
+.189,+.003/-.000,.189,.192,#12,.1890,at spec minimum,S-DRILL
+.213,+.003/-.000,.213,.216,#3,.2130,at spec minimum,S-DRILL
+.234,+.003/-.000,.234,.237,15/64,.2344,inside spec,S-DRILL
+.249,+.003/-.000,.249,.252,1/4,.2500,inside spec,S-DRILL
+.250,+.003/-.000,.250,.253,1/4,.2500,at spec minimum,S-DRILL
+.296,+.003/-.000,.296,.299,19/64,.2969,inside spec,S-DRILL
+.344,+.003/-.000,.344,.347,11/32,.3438,"two ten-thousandths of an inch under the spec minimum, which rounds to .344 at 3 places (no standard inch drill falls between .344 and .347)",S-DRILL
