@@ -1,14 +1,18 @@
-# Hardware data (v0.11, confirmed-only)
+# Hardware data (v0.12, confirmed-only)
 
 | File | Rows | Content |
 |---|---|---|
 | hardware_ms21208.csv | 35 | Helical inserts 4-40, 6-32, 8-32, 10-24, 10-32, 1/4-20, 1/4-28; 1D-3D |
 | hardware_m45938_1.csv | 46 | Clinch nuts 2-56 through 1/4-20 incl. 1/4-28; carbon, CRES, aluminum dashes |
 | hardware_m63540_1.csv | 100 | Flush-head studs 2-56 through 1/4-20; carbon and CRES |
-| hardware_pem_sp.csv | 11 | PEM SP (PEM 300) clinch nuts 4-40, 8-32, 10-32, 1/4-20; commercial only, no mil PN |
-| hardware_pem_fh4.csv | 35 | PEM FH4 flush-head studs 4-40, 8-32, 10-32, 1/4-20; commercial only, no mil PN |
+| hardware_pem_sp.csv | 14 | PEM SP (PEM 300) clinch nuts 4-40, 6-32, 8-32, 10-32, 1/4-20; commercial only, no mil PN |
+| hardware_pem_fh4.csv | 45 | PEM FH4 flush-head studs 4-40, 6-32, 8-32, 10-32, 1/4-20; commercial only, no mil PN |
 | materials.csv | 4 | 5052-H32, 6061-T6, A304, A1008 CS Type B hardness, compatibility and standard stock thicknesses |
-| sources.csv | 28 | Source IDs referenced in each row |
+| pem_fh_performance.csv | 24 | PEM FH/FHS stud push-out, torque-out and pull-thru averages |
+| hardware_stud_stack.csv | 5 | Stud length basis per thread: NAS1149 CRES washer and MS21044C / MS17830-4C lock nut |
+| clinch_drills.csv | 12 | Standard drill for each clinch nut and stud spec hole |
+| threads.csv | 5 | Thread sizes offered in the app: major diameter, threads per inch, series, PEM thread code |
+| sources.csv | 36 | Source IDs referenced in each row |
 
 Rules
 - `note_pn` / `note_cage` are what the drawing note prints (current mil PN, CAGE 80205). `legacy_pn` / `legacy_cage` are kept for reference.
@@ -36,7 +40,8 @@ Commercial-only PEM rows (SP, FH4)
 - Source: PEM bulletin SS, Fasteners For Use In Stainless Steel Sheets, rev 10/13/26. SP dimensions pg SS-3, FH4 pg SS-10, material pg SS-15, performance pg SS-23/24, Dos and Don'ts pg SS-27. Checked against the page images.
 - SP: rated for stainless sheet HRB 90 / HB 192 or less. Shank code chosen as the longest shank whose recommended minimum sheet thickness fits; PEM publishes no maximum sheet thickness. Performance values are PEM averages in 304 stainless, stored in `*_avg` columns, not spec minimums.
 - FH4: hardened 400-series stainless, rated for stainless sheet HRB 92 / HB 202 or less. Sheet thickness range .040-.095 (1/4-20: .062-.117); PEM notes performance may be reduced in thicker sheets. Length L is overall from the flush head face (PEM drawing). Requires the PEM special anvil with raised ring. FHP (A286) is not included.
-- Only 4-40, 8-32, 10-32 and 1/4-20 are included (app scope). Finish suffixes are omitted.
+- Only 4-40, 6-32, 8-32, 10-32 and 1/4-20 are included (app scope). Finish suffixes are omitted.
+- 6-32 (v0.12): SP-632-0/1/2 (A .030/.038/.054, min sheet .030/.040/.056, hole .1875, C .187, E .280, T .070, edge .22; 8500/9500/10500 lb install, 140/170/340 lb pushout, 18/24/28 in-lb torque-out) and FH4-632-4 through -24 (sheet .040-.095, hole .137, max hole in attached parts .157, H .206, S .090, edge .250; 22 in-lb nut torque; 9500 lb install, 540 lb pushout, 27 in-lb torque-out, 1350 lb pull-thru). Checked against the page images.
 
 Material notes
 - A304: ASTM A240 maximum 92 HRB exceeds every M45938/1 and M63540/1 limit. FH4 (92) is at its limit and compliant; SP (90) is below the A240 maximum, so the app warns to confirm sheet hardness or use a helical insert.
@@ -55,7 +60,16 @@ Commercial PEM reference (reference only, never printed in the note)
 
 Clinch-hardware drills (v1.7)
 - `clinch_drills.csv` maps each nut and stud spec hole (`hole_dia_in_sheet`, `hole_tol`) to a standard inch drill (number, letter or fractional) and its decimal size (S-DRILL). Nut and stud notes print `DRILL <size> (Ø<decimal>) THRU`, the same style as insert notes.
-- The drill is the standard inch drill at or just above the spec minimum. Two exceptions: .163 uses #19 (.166), at the spec maximum, because no standard inch drill falls inside .163-.166 below it; .344 uses 11/32 (.3438), two ten-thousandths under the spec minimum, because no standard inch drill falls inside .344-.347. The app shows an info line for these and for .249 (1/4, .250).
+- The drill is the standard inch drill at or just above the spec minimum. Three exceptions: .137 (6-32 stud) uses a 3.5 mm metric drill (.1378), inside spec, because no standard inch drill falls inside .137-.140 (#29 .1360 is under, #28 .1405 is over); McMaster-Carr lists 3.5 mm for FH-632 (S-MCM-STUD). .163 uses #19 (.166), at the spec maximum, because no standard inch drill falls inside .163-.166 below it; .344 uses 11/32 (.3438), two ten-thousandths under the spec minimum, because no standard inch drill falls inside .344-.347. The app shows an info line for these and for .249 (1/4, .250).
 
 ## shank_code (v1.7.6)
 - `shank_code` column in `hardware_m45938_1.csv` and `hardware_pem_sp.csv`: PEM shank code, taken from the last dash of `commercial_pem_pn` (PEM CL/SP data sheets). Printed on the nut INSTALL line instead of shank length A. Blank only for out-of-scope rows with no PEM match.
+
+## Thread list (v1.8.0)
+- `threads.csv` drives the app thread buttons and the cross-section thread geometry (major diameter and threads per inch). Only rows with `in_app_scope` = Y are offered. Values match the `major_dia` / `tpi` columns of the hardware CSVs (NASM33537 Table I) and the PEM thread codes. The substrate material list comes from `materials.csv`.
+- Adding a thread means adding its row here, setting `in_app_scope` = Y on its rows in the hardware CSVs, and adding its washer/nut to `hardware_stud_stack.csv` and any new hole size to `clinch_drills.csv`.
+
+## 6-32 (v1.8.0)
+- In app scope: MS21208 inserts (MS122078, MS122118, MS122158, MS122198, MS122238; 1D-3D), M45938/1-8C and -9C CRES nuts, M63540/1-12C through -19C CRES studs, SP-632 nuts and FH4-632 studs. Carbon steel and aluminum 6-32 rows stay as spec record under the CRES-only rule.
+- Stud stack: NAS1149CN632 washer (No. 6, CRES, .032 +/-.004, AN960C6 equivalent) and MS21044C06 lock nut (height .160-.188).
+- Aluminum nuts M45938/1-10A, -11A (6-32) and -18A (10-32) had no legible spec edge distance; PEM CLA values (.27, .31; S-PEMCL pg 5) were added to `min_edge_dist_vendor_ref` for reference only.

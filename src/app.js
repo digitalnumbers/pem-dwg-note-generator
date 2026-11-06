@@ -1,5 +1,5 @@
-import { APP_VERSION, THREADS, MATERIALS, HW_MAT_LABEL, DEFAULT_STATE, parseCSV, compute, encodeState, decodeState, stdThicknesses, stdName, dec } from './logic.js?v=1.7.10';
-import { drawSection, VB_W } from './drawing.js?v=1.7.10';
+import { APP_VERSION, threadList, materialList, HW_MAT_LABEL, DEFAULT_STATE, parseCSV, compute, encodeState, decodeState, stdThicknesses, stdName, dec } from './logic.js?v=1.8.0';
+import { drawSection, VB_W } from './drawing.js?v=1.8.0';
 
 const $ = id => document.getElementById(id);
 const form = $('form');
@@ -15,17 +15,18 @@ async function loadCSV(name) {
 
 async function init() {
   $('ver').textContent = `v${APP_VERSION}`;
-  $('material').innerHTML = MATERIALS.map(m => `<option value="${m}">${m}</option>`).join('');
-  $('threads').innerHTML = THREADS.map(t => `<label><input type="radio" name="thread" value="${t}"><span>${t}</span></label>`).join('');
   try {
-    const [inserts, nuts, studs, spNuts, fh4Studs, materials, src, stack, studPerf, clinchDrills] = await Promise.all(['hardware_ms21208.csv', 'hardware_m45938_1.csv', 'hardware_m63540_1.csv', 'hardware_pem_sp.csv', 'hardware_pem_fh4.csv', 'materials.csv', 'sources.csv', 'hardware_stud_stack.csv', 'pem_fh_performance.csv', 'clinch_drills.csv'].map(loadCSV));
+    const [inserts, nuts, studs, spNuts, fh4Studs, materials, src, stack, studPerf, clinchDrills, threads] = await Promise.all(['hardware_ms21208.csv', 'hardware_m45938_1.csv', 'hardware_m63540_1.csv', 'hardware_pem_sp.csv', 'hardware_pem_fh4.csv', 'materials.csv', 'sources.csv', 'hardware_stud_stack.csv', 'pem_fh_performance.csv', 'clinch_drills.csv', 'threads.csv'].map(loadCSV));
     // Commercial-only PEM rows (no mil PN) join the same pools; auto-select uses them only when no mil part is rated.
-    data = { inserts, nuts: [...nuts, ...spNuts], studs: [...studs, ...fh4Studs], materials, stack, studPerf, clinchDrills };
+    data = { inserts, nuts: [...nuts, ...spNuts], studs: [...studs, ...fh4Studs], materials, stack, studPerf, clinchDrills, threads };
     for (const r of src) sources[r.id] = r;
   } catch (e) {
     $('note').textContent = 'Could not load the spec data files. ' + e.message;
     return;
   }
+  // Thread and material choices come from threads.csv and materials.csv (v1.8.0).
+  $('material').innerHTML = materialList(data).map(m => `<option value="${m}">${m}</option>`).join('');
+  $('threads').innerHTML = threadList(data).map(t => `<label><input type="radio" name="thread" value="${t}"><span>${t}</span></label>`).join('');
   try { state = { ...DEFAULT_STATE, ...decodeState(location.hash) }; } catch { state = { ...DEFAULT_STATE }; }
   writeForm();
   update();

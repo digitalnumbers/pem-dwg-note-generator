@@ -1,8 +1,8 @@
 // Golden-note tests: node tests/notes.test.mjs
 import { readFileSync } from 'node:fs';
-import { parseCSV, compute } from '../src/logic.js';
+import { parseCSV, compute, threadList } from '../src/logic.js';
 const rd = f => parseCSV(readFileSync(new URL('../data/' + f, import.meta.url), 'utf8'));
-const data = { inserts: rd('hardware_ms21208.csv'), nuts: [...rd('hardware_m45938_1.csv'), ...rd('hardware_pem_sp.csv')], studs: [...rd('hardware_m63540_1.csv'), ...rd('hardware_pem_fh4.csv')], materials: rd('materials.csv'), stack: rd('hardware_stud_stack.csv'), studPerf: rd('pem_fh_performance.csv'), clinchDrills: rd('clinch_drills.csv') };
+const data = { inserts: rd('hardware_ms21208.csv'), nuts: [...rd('hardware_m45938_1.csv'), ...rd('hardware_pem_sp.csv')], studs: [...rd('hardware_m63540_1.csv'), ...rd('hardware_pem_fh4.csv')], materials: rd('materials.csv'), stack: rd('hardware_stud_stack.csv'), studPerf: rd('pem_fh_performance.csv'), clinchDrills: rd('clinch_drills.csv'), threads: rd('threads.csv') };
 let fail = 0;
 // Golden notes were written against 6061-T6; the app default is 5052-H32 since v1.7.3, so pin 6061 unless a test sets material.
 const BASE = { material: '6061-T6' };
@@ -123,4 +123,17 @@ import { round3, dec, cap3, holeSize, fmtThk } from '../src/logic.js';
   const a = perf({ type: 'stud', material: '6061-T6', thread: '10-32', thk: '0.090' }), b = perf({ type: 'stud', material: 'A1008 CS Type B', thread: '1/4-20', thk: '0.090' }), c = perf({ type: 'stud', material: 'A304 (annealed)', thread: '10-32', thk: '0.060' });
   const ok = a && a[0].includes('FHS') && a[0].includes('Aluminum') && a[1] === '270 lb / 30 in-lb / 1220 lb' && b && b[0].includes('Steel') && b[1] === '575 lb / 100 in-lb / 2550 lb' && c && c[1] === '800 lb / 95 in-lb / 2250 lb';
   if (!ok) { fail++; console.log('FAIL stud PEM performance row', a, b, c); } else console.log('ok   stud spec values show PEM push-out / torque-out / pull-thru'); }
+// v1.8.0: 6-32 added; thread list comes from threads.csv
+{ const ok = threadList(data).join(',') === '4-40,6-32,8-32,10-32,1/4-20';
+  if (!ok) { fail++; console.log('FAIL thread list from threads.csv', threadList(data)); } else console.log('ok   thread list from threads.csv includes 6-32'); }
+check('insert 6-32 6061 .250 thru', { thread: '6-32', thk: '0.250' },
+  ['4X DRILL #26 (\u00d8.147) THRU', '<HOLE-SINK>\u00d8.180-.210 X 120\u00b0', 'TAP 6-32 STI THRU', 'INSTALL 6-32 X .207 THREADED INSERT', 'BREAK TANG', 'PN: MS122118 UNCOATED', 'CAGE: 80205', 'NEAR SIDE']);
+check('nut 6-32 5052 .063 -> M45938/1-9C', { type: 'nut', thread: '6-32', material: '5052-H32', thk: '0.063' },
+  ['4X DRILL 3/16 (\u00d8.188) THRU', 'INSTALL 6-32 SHANK 2 SELF-CLINCHING NUT', 'PN: M45938/1-9C', 'CAGE: 80205', 'NEAR SIDE']);
+check('nut 6-32 A304 .063 -> SP-632-2', { type: 'nut', thread: '6-32', material: 'A304 (annealed)', thk: '0.063' },
+  ['4X DRILL 3/16 (\u00d8.188) THRU', 'INSTALL 6-32 SHANK 2 SELF-CLINCHING NUT', 'PN: SP-632-2', 'CAGE: 46384', 'NEAR SIDE']);
+check('stud 6-32 5052 .090 -> 3.5 mm drill, M63540/1-14C, MS21044C06 stack', { type: 'stud', thread: '6-32', material: '5052-H32', thk: '0.090' },
+  ['4X DRILL 3.5 MM (\u00d8.138) THRU', 'INSTALL 6-32 X .500 SELF-CLINCHING STUD', 'PN: M63540/1-14C', 'CAGE: 80205', 'NEAR SIDE FLUSH'], o => o.info.some(t => t.includes('MS21044C06')));
+check('stud 6-32 A304 .063 -> FH4-632-6', { type: 'stud', thread: '6-32', material: 'A304 (annealed)', thk: '0.063' },
+  ['4X DRILL 3.5 MM (\u00d8.138) THRU', 'INSTALL 6-32 X .375 SELF-CLINCHING STUD', 'PN: FH4-632-6', 'CAGE: 46384', 'NEAR SIDE FLUSH']);
 if (fail) { console.log(fail + ' failed'); process.exitCode = 1; } else console.log('all passed');

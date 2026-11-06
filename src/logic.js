@@ -5,17 +5,15 @@
 // v1.7.7: nut INSTALL line prints "SHANK <code>" (word CODE removed).
 // Rule: every value printed in a note comes straight from a CSV row; nothing is computed into the note.
 
-export const APP_VERSION = "1.7.10";
-export const THREADS = ['4-40', '8-32', '10-32', '1/4-20'];
-export const MATERIALS = ['5052-H32', '6061-T6', 'A304 (annealed)', 'A1008 CS Type B'];
-
-// Basic thread geometry used only to draw the cross-section (never printed in a note).
-export const THREAD_GEOM = {
-  '4-40': { D: 0.112, tpi: 40 },
-  '8-32': { D: 0.164, tpi: 32 },
-  '10-32': { D: 0.190, tpi: 32 },
-  '1/4-20': { D: 0.250, tpi: 20 },
-};
+export const APP_VERSION = "1.8.0";
+// v1.8.0: thread list and thread geometry come from threads.csv; material list comes from materials.csv.
+// Adds 6-32. Thread geometry is used only to draw the cross-section (never printed in a note).
+export function threadList(data) { return (data.threads || []).filter(r => r.in_app_scope === 'Y').map(r => r.thread); }
+export function materialList(data) { return (data.materials || []).map(r => r.material); }
+export function threadGeom(thread, data) {
+  const r = (data.threads || []).find(t => t.thread === thread);
+  return r ? { D: num(r.major_dia), tpi: num(r.tpi) } : null;
+}
 
 export const HW_MAT_LABEL = { cres: 'CRES', carbon: 'Carbon steel', aluminum: 'Aluminum', pem: 'PEM hardened stainless (commercial only)' };
 const HW_KEYS = ['cres', 'carbon', 'aluminum', 'pem'];
@@ -266,7 +264,7 @@ function computeInsert(s, data, mat, T, validT, q, sideWord, out) {
   out.install.push(`INSTALL ${s.thread} X ${dec(row.nominal_length_Ln)} THREADED INSERT`, 'BREAK TANG', `PN: ${pn} UNCOATED`, `CAGE: ${cage}`, sideWord);
   out.commercial = { pn: row.commercial_pem_pn, basis: row.commercial_pem_basis, hidden: false, brand: 'Heli-Coil' };
   if (s.hole === 'blind' && validT) out.info.push(`MIN DEPTH is to full drill diameter. The 118\u00b0 point reaches about ${dec(tip(row).toFixed(3))} in, leaving about ${dec(Math.max(0, T - tip(row)).toFixed(3))} in of material below the point at minimum depth.`);
-  const tg = THREAD_GEOM[s.thread];
+  const tg = threadGeom(s.thread, data);
   out.geom = {
     kind: 'insert', T, hole: s.hole, P: 1 / tg.tpi, D: tg.D, drill: drillDecimal(row[drillCol]), drillLabel: drill,
     depth: num(row[depthCol]), depthLabel: dec(row[depthCol]), H: num(row.min_full_thread_H), HLabel: dec(row.min_full_thread_H),
@@ -389,7 +387,7 @@ function computeNut(s, data, mat, T, validT, q, sideWord, out) {
   const edge = row.min_edge_dist_spec || '';
   const edgeSrc = row.commercial_only === 'Y' ? 'PEM' : 'spec';
   commercialOnlyInfo(row, 'nut', out);
-  const tg = THREAD_GEOM[s.thread];
+  const tg = threadGeom(s.thread, data);
   out.geom = {
     kind: 'nut', T, side: s.side, P: 1 / tg.tpi, D: tg.D, tpi: tg.tpi,
     hole: dr ? num(dr.drill_dia) : num(row.hole_dia_in_sheet), holeLabel: dr ? `DRILL ${dr.label}` : `HOLE ${hs.text.split(' ')[0]}`, C: num(row.body_dia_C), E: num(row.head_dia_E), Eh: num(row.head_thk_T),
@@ -479,7 +477,7 @@ function computeStud(s, data, mat, T, validT, q, sideWord, out) {
     if (row.max_hole_in_attached_parts) out.info.push(`Max clearance hole in attached parts: ${row.max_hole_in_attached_parts}.`);
   }
   commercialOnlyInfo(row, 'stud', out);
-  const tg = THREAD_GEOM[s.thread];
+  const tg = threadGeom(s.thread, data);
   out.geom = {
     kind: 'stud', T, side: s.side, P: 1 / tg.tpi, D: tg.D, tpi: tg.tpi,
     hole: dr ? num(dr.drill_dia) : num(row.hole_dia_in_sheet), holeLabel: dr ? `DRILL ${dr.label}` : `HOLE ${hs.text.split(' ')[0]}`, headD: num(row.head_dia), S: num(row.unthreaded_S_max), SLabel: row.unthreaded_S_max, minSheet: num(row.min_sheet_thk),

@@ -7,14 +7,14 @@ Static web app (GitHub Pages ready) that builds ASME Y14.5-style drawing notes a
 - Self-clinching flush-head studs: M63540/1 (MIL-S-63540/1A, now NASM63540/1)
 - Stainless-sheet clinch hardware with no mil PN (commercial only): PEM SP nuts and PEM FH4 studs, used for A304
 
-Threads in v1: 4-40, 8-32, 10-32, 1/4-20. Substrates: 5052-H32 (default), 6061-T6, A304 (annealed), A1008 CS Type B.
+Threads: 4-40, 6-32, 8-32, 10-32, 1/4-20 (from `data/threads.csv`). Substrates: 5052-H32 (default), 6061-T6, A304 (annealed), A1008 CS Type B.
 
 ## How it works
 - Every value printed in a note comes straight from a CSV row in `data/`. Nothing is computed into the note.
 - Note symbols (v1.4), for pasting into SolidWorks notes: `<HOLE-SINK>` countersink, `<HOLE-DEPTH>` depth, `Ø` diameter, `°` degree. Per ASME Y14.5, the symbol precedes its dimension with no space.
 - Countersinks are always called out with diameter and included angle (ASME Y14.5-2018 4.5.12). Inserts print `<HOLE-SINK>Ø.230-.260 X 120°`, with the angle from `csink_angle` (NASM33537). The angle tolerance is not printed; the drawing title block covers it.
 - Values are shown with at most 3 decimal places (half-up rounding, so drill #7 .2010 prints as .201). A clinch hole nominal with more places has both limits rounded inward to stay inside the spec range.
-- Clinch nut and stud holes (v1.7) print the standard drill and its decimal, the same style as inserts: `4X DRILL #3 (Ø.213) THRU`. Drills come from `data/clinch_drills.csv`; where no standard inch drill falls inside the spec range (.163 and .344 holes) the app shows an info line.
+- Clinch nut and stud holes (v1.7) print the standard drill and its decimal, the same style as inserts: `4X DRILL #3 (Ø.213) THRU`. Drills come from `data/clinch_drills.csv`; where no standard inch drill falls inside the spec range (.163 and .344 holes) the app shows an info line. The 6-32 stud hole (.137-.140) uses a 3.5 mm drill (Ø.138), the only standard drill inside the range.
 - Selections that break a spec rule are flagged, with one-click fixes, but still allowed.
 - Blind insert holes must keep MIN DEPTH plus the 118 deg drill point inside the material.
 - Clinch hardware is CRES only. Carbon steel and aluminum rows stay in the CSVs as a spec record but the app never offers them.
@@ -28,6 +28,7 @@ Threads in v1: 4-40, 8-32, 10-32, 1/4-20. Substrates: 5052-H32 (default), 6061-T
 - All caps (v1.7.8): every drawing-note line is uppercase, including the capital X in THREAD X LENGTH.
 - Page stays still (v1.7.9): opening or picking from the quantity and thickness dropdowns scrolls only the list, never the page.
 - Dropdown wheel scrolling (v1.7.10): the thickness and quantity lists take mouse-wheel scrolling as soon as they open and do not pass it to the page.
+- 6-32 (v1.8.0): inserts, CRES nuts, CRES studs, PEM SP-632 nuts and FH4-632 studs, with the NAS1149CN632 washer and MS21044C06 nut for stud length. The thread list and thread geometry come from `data/threads.csv`; the substrate list comes from `data/materials.csv`.
 - The selection lives in the URL hash, so a link reproduces a note.
 
 ## Run locally
@@ -38,7 +39,7 @@ node tests/notes.test.mjs   # golden-note tests
 ```
 
 ## Add hardware
-Add rows to the matching CSV in `data/` with `in_app_scope=Y` and a `sources` entry from `data/sources.csv`. See `data/README.md` for column rules.
+Add rows to the matching CSV in `data/` with `in_app_scope=Y` (new thread sizes also need a row in `data/threads.csv`) and a `sources` entry from `data/sources.csv`. See `data/README.md` for column rules.
 
 ## Disclaimer
 Drafting aid only. Verify every note against the current governing specification before release.

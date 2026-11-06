@@ -1,0 +1,6 @@
+thread,major_dia,tpi,series,pem_thread_code,in_app_scope,sources
+4-40,.112,40,UNC,440,Y,"S-NASM33537 T-I (major dia, tpi); S-PEMSS (PEM thread code)"
+6-32,.138,32,UNC,632,Y,"S-NASM33537 T-I (major dia, tpi); S-PEMSS (PEM thread code)"
+8-32,.164,32,UNC,832,Y,"S-NASM33537 T-I (major dia, tpi); S-PEMSS (PEM thread code)"
+10-32,.190,32,UNF,032,Y,"S-NASM33537 T-I (major dia, tpi); S-PEMSS (PEM thread code)"
+1/4-20,.250,20,UNC,0420,Y,"S-NASM33537 T-I (major dia, tpi); S-PEMSS (PEM thread code)"

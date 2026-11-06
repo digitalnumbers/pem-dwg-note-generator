@@ -1,5 +1,6 @@
 hole_dia_in_sheet,hole_tol,spec_min,spec_max,drill,drill_dia,fit,sources
 .111,+.003/-.000,.111,.114,#34,.1110,at spec minimum,S-DRILL
+.137,+.003/-.000,.137,.140,3.5 mm,.1378,inside spec (no standard inch drill falls between .137 and .140; McMaster-Carr lists 3.5 mm for the FH-632 hole),S-DRILL; S-MCM-STUD
 .163,+.003/-.000,.163,.166,#19,.1660,at spec maximum (no standard inch drill falls between .163 and .166),S-DRILL
 .166,+.003/-.000,.166,.169,#19,.1660,at spec minimum,S-DRILL
 .1875,+.003/-.000,.1875,.1905,3/16,.1875,at spec minimum,S-DRILL
