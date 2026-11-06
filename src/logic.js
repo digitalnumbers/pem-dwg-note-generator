@@ -1,10 +1,11 @@
 // Pure note/validation logic. No DOM access, so it runs in the browser and in Node tests.
 // v1.7.5: INSTALL line states hardware size as THREAD x LENGTH (stud L, nut shank A, insert nominal Ln), all from the CSV row.
 // v1.7.6: nuts state PEM shank code (shank_code column, last dash of the PEM PN) instead of shank length A.
+// v1.7.8: all note text uppercase; THREAD X LENGTH uses a capital X.
 // v1.7.7: nut INSTALL line prints "SHANK <code>" (word CODE removed).
 // Rule: every value printed in a note comes straight from a CSV row; nothing is computed into the note.
 
-export const APP_VERSION = "1.7.7";
+export const APP_VERSION = "1.7.10";
 export const THREADS = ['4-40', '8-32', '10-32', '1/4-20'];
 export const MATERIALS = ['5052-H32', '6061-T6', 'A304 (annealed)', 'A1008 CS Type B'];
 
@@ -181,6 +182,8 @@ export function compute(state, data) {
   out.nonCompliant = out.warnings.length > 0;
   // Max 3 decimal places everywhere the user reads a value (v1.4).
   out.prep = out.prep.map(cap3); out.install = out.install.map(cap3);
+  // v1.7.8: every drawing-note line is all caps (e.g. 10-32 X .750).
+  out.prep = out.prep.map(l => l.toUpperCase()); out.install = out.install.map(l => l.toUpperCase());
   out.info = out.info.map(cap3);
   out.warnings = out.warnings.map(w => ({ ...w, text: cap3(w.text), actions: w.actions.map(a => ({ ...a, label: cap3(a.label) })) }));
   if (out.details) out.details = out.details.map(([k, v]) => [k, cap3(v)]);
@@ -260,7 +263,7 @@ function computeInsert(s, data, mat, T, validT, q, sideWord, out) {
   } else {
     out.prep.push(`${q}DRILL ${drill} THRU`, csk, `TAP ${row.tap} THRU`);
   }
-  out.install.push(`INSTALL ${s.thread} x ${dec(row.nominal_length_Ln)} THREADED INSERT`, 'BREAK TANG', `PN: ${pn} UNCOATED`, `CAGE: ${cage}`, sideWord);
+  out.install.push(`INSTALL ${s.thread} X ${dec(row.nominal_length_Ln)} THREADED INSERT`, 'BREAK TANG', `PN: ${pn} UNCOATED`, `CAGE: ${cage}`, sideWord);
   out.commercial = { pn: row.commercial_pem_pn, basis: row.commercial_pem_basis, hidden: false, brand: 'Heli-Coil' };
   if (s.hole === 'blind' && validT) out.info.push(`MIN DEPTH is to full drill diameter. The 118\u00b0 point reaches about ${dec(tip(row).toFixed(3))} in, leaving about ${dec(Math.max(0, T - tip(row)).toFixed(3))} in of material below the point at minimum depth.`);
   const tg = THREAD_GEOM[s.thread];
@@ -466,7 +469,7 @@ function computeStud(s, data, mat, T, validT, q, sideWord, out) {
   const { pn, cage } = pnFor(row, s);
   const hs = holeSize(row.hole_dia_in_sheet, row.hole_tol);
   const dr = clinchPrep(row, data, hs, q, out);
-  out.install.push(`INSTALL ${s.thread} x ${dec(row.length_L)} SELF-CLINCHING STUD`, `PN: ${pn}`, `CAGE: ${cage}`, `${sideWord} FLUSH`);
+  out.install.push(`INSTALL ${s.thread} X ${dec(row.length_L)} SELF-CLINCHING STUD`, `PN: ${pn}`, `CAGE: ${cage}`, `${sideWord} FLUSH`);
   out.commercial = { pn: row.commercial_pem_pn, basis: row.commercial_pem_basis, hidden: false, isNotePN: row.commercial_only === 'Y' };
   const edge = row.min_edge_dist_spec || '';
   const edgeSrc = row.commercial_only === 'Y' ? 'PEM' : 'spec';

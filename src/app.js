@@ -1,5 +1,5 @@
-import { APP_VERSION, THREADS, MATERIALS, HW_MAT_LABEL, DEFAULT_STATE, parseCSV, compute, encodeState, decodeState, stdThicknesses, stdName, dec } from './logic.js?v=1.7.4';
-import { drawSection, VB_W } from './drawing.js?v=1.7.4';
+import { APP_VERSION, THREADS, MATERIALS, HW_MAT_LABEL, DEFAULT_STATE, parseCSV, compute, encodeState, decodeState, stdThicknesses, stdName, dec } from './logic.js?v=1.7.10';
+import { drawSection, VB_W } from './drawing.js?v=1.7.10';
 
 const $ = id => document.getElementById(id);
 const form = $('form');
@@ -133,12 +133,37 @@ function markThkSelected() {
     li.setAttribute('aria-selected', sel ? 'true' : 'false');
   });
 }
+// v1.7.9: scroll an option within its own list only; never move the page.
+function scrollInList(li, center = false) {
+  const ul = li.parentElement; if (!ul) return;
+  const top = li.offsetTop, h = li.offsetHeight, vh = ul.clientHeight;
+  if (center) ul.scrollTop = Math.max(0, top - (vh - h) / 2);
+  else if (top < ul.scrollTop) ul.scrollTop = top;
+  else if (top + h > ul.scrollTop + vh) ul.scrollTop = top + h - vh;
+}
+// Run fn, then restore the page scroll position so re-rendering never jumps the page.
+function keepScroll(fn) {
+  const x = window.scrollX, y = window.scrollY;
+  fn();
+  window.scrollTo(x, y);
+  requestAnimationFrame(() => window.scrollTo(x, y));
+}
+// v1.7.10: the list handles its own wheel scrolling. A freshly opened dropdown is not yet treated by the
+// browser as the scroll target under a still cursor, so the first wheel events used to scroll the page.
+function ownWheel(ul) {
+  ul.addEventListener('wheel', e => {
+    if (e.ctrlKey) return; // pinch-zoom
+    e.preventDefault();
+    const k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? ul.clientHeight : 1;
+    ul.scrollTop += e.deltaY * k;
+  }, { passive: false });
+}
 function setThkActive(i) {
   const opts = thkOpts();
   opts.forEach(li => li.classList.remove('active'));
   thkActive = opts.length ? Math.max(0, Math.min(opts.length - 1, i)) : -1;
   const li = opts[thkActive];
-  if (li) { li.classList.add('active'); li.scrollIntoView({ block: 'nearest' }); $('thk').setAttribute('aria-activedescendant', li.id); }
+  if (li) { li.classList.add('active'); scrollInList(li); $('thk').setAttribute('aria-activedescendant', li.id); }
   else $('thk').removeAttribute('aria-activedescendant');
 }
 function thkIsOpen() { return !$('thk-list').hidden; }
@@ -153,7 +178,7 @@ function openThk() {
   if (i < 0 && Number.isFinite(T)) { i = opts.findIndex(li => parseFloat(li.dataset.thk) >= T); if (i < 0) i = opts.length - 1; }
   ul.scrollTop = 0;
   setThkActive(i < 0 ? 0 : i);
-  if (opts[thkActive]) opts[thkActive].scrollIntoView({ block: 'center' });
+  if (opts[thkActive]) scrollInList(opts[thkActive], true);
 }
 function closeThk() {
   $('thk-list').hidden = true;
@@ -165,13 +190,14 @@ function closeThk() {
 function pickThk(v) {
   state.thk = v; if (state.len !== 'auto') state.len = 'auto';
   $('thk').value = v;
-  closeThk(); writeForm(); update();
+  keepScroll(() => { closeThk(); writeForm(); update(); });
 }
 function initThkCombo() {
   const inp = $('thk'), btn = $('thk-toggle'), ul = $('thk-list'), box = $('thk-combo');
   btn.addEventListener('mousedown', e => e.preventDefault()); // keep focus in the input
-  btn.addEventListener('click', () => { if (thkIsOpen()) closeThk(); else { openThk(); inp.focus(); } });
+  btn.addEventListener('click', () => { if (thkIsOpen()) closeThk(); else { openThk(); inp.focus({ preventScroll: true }); } });
   ul.addEventListener('mousedown', e => e.preventDefault());
+  ownWheel(ul);
   ul.addEventListener('click', e => { const li = e.target.closest('li[role="option"]'); if (li) pickThk(li.dataset.thk); });
   ul.addEventListener('mousemove', e => { const li = e.target.closest('li[role="option"]'); if (li) { const i = thkOpts().indexOf(li); if (i !== thkActive) { thkOpts().forEach(o => o.classList.remove('active')); li.classList.add('active'); thkActive = i; } } });
   inp.addEventListener('keydown', e => {
@@ -205,7 +231,7 @@ function setQtyActive(i) {
   opts.forEach(li => li.classList.remove('active'));
   qtyActive = opts.length ? Math.max(0, Math.min(opts.length - 1, i)) : -1;
   const li = opts[qtyActive];
-  if (li) { li.classList.add('active'); li.scrollIntoView({ block: 'nearest' }); $('qty').setAttribute('aria-activedescendant', li.id); }
+  if (li) { li.classList.add('active'); scrollInList(li); $('qty').setAttribute('aria-activedescendant', li.id); }
   else $('qty').removeAttribute('aria-activedescendant');
 }
 function qtyIsOpen() { return !$('qty-list').hidden; }
@@ -220,7 +246,7 @@ function openQty() {
   if (i < 0 && Number.isFinite(q)) { i = opts.findIndex(li => +li.dataset.qty >= q); if (i < 0) i = opts.length - 1; }
   ul.scrollTop = 0;
   setQtyActive(i < 0 ? 0 : i);
-  if (opts[qtyActive]) opts[qtyActive].scrollIntoView({ block: 'center' });
+  if (opts[qtyActive]) scrollInList(opts[qtyActive], true);
 }
 function closeQty() {
   $('qty-list').hidden = true;
@@ -231,14 +257,15 @@ function closeQty() {
 }
 function pickQty(v) {
   state.qty = v; $('qty').value = v;
-  closeQty(); writeForm(); update();
+  keepScroll(() => { closeQty(); writeForm(); update(); });
 }
 function initQtyCombo() {
   const inp = $('qty'), btn = $('qty-toggle'), ul = $('qty-list'), box = $('qty-combo');
   ul.innerHTML = QTY_OPTIONS.map((n, i) => `<li role="option" id="qty-opt-${i}" data-qty="${n}" aria-selected="false"><span class="v">${n}</span></li>`).join('');
   btn.addEventListener('mousedown', e => e.preventDefault());
-  btn.addEventListener('click', () => { if (qtyIsOpen()) closeQty(); else { openQty(); inp.focus(); } });
+  btn.addEventListener('click', () => { if (qtyIsOpen()) closeQty(); else { openQty(); inp.focus({ preventScroll: true }); } });
   ul.addEventListener('mousedown', e => e.preventDefault());
+  ownWheel(ul);
   ul.addEventListener('click', e => { const li = e.target.closest('li[role="option"]'); if (li) pickQty(li.dataset.qty); });
   ul.addEventListener('mousemove', e => { const li = e.target.closest('li[role="option"]'); if (li) { const i = qtyOpts().indexOf(li); if (i !== qtyActive) { qtyOpts().forEach(o => o.classList.remove('active')); li.classList.add('active'); qtyActive = i; } } });
   inp.addEventListener('keydown', e => {
