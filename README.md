@@ -23,6 +23,7 @@ Threads in v1: 4-40, 8-32, 10-32, 1/4-20. Substrates: 5052-H32 (default), 6061-T
 - For mil parts, the equivalent commercial PEM part number is shown grayed out for reference only and is never copied into the note. The reference PN itself is selectable (one click selects it) so it can be copy-pasted. Threaded insert notes append UNCOATED to the PN (e.g. PN: MS124655 UNCOATED) to call out the uncoated version, since these inserts come in several coatings.
 - Stud length (v1.7.3): Auto picks the shortest L that covers 2X sheet + NAS1149 washer + lock nut. That length is a suggestion only; a shorter stud is accepted with an info line. The app warns only when L does not clear (protrude past) the sheet.
 - Stud spec values include PEM push-out, torque-out and pull-thru averages (`data/pem_fh_performance.csv`; FH4 values from its own CSV). These are PEM averages for reference, not spec minimums.
+- Quantity (v1.7.4): pick 1-50 from the dropdown or type any whole number, same combobox as substrate thickness.
 - The selection lives in the URL hash, so a link reproduces a note.
 
 ## Run locally

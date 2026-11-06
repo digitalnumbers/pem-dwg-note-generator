@@ -189,3 +189,7 @@ select:disabled { color: var(--color-text-faint); background: var(--color-surfac
 .thk-list li[aria-selected='true'] { font-weight: 600; }
 .thk-list li[aria-selected='true'] .v::after { content: ' \2713'; color: var(--color-primary); }
 .thk-list li.empty { cursor: default; color: var(--color-text-muted); font-size: var(--text-xs); }
+
+/* quantity combobox (v1.7.4): reuses the thickness combobox styles */
+.qty-combo > input { flex: 1; min-width: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.qty-combo .thk-list li .v { min-width: 2.5ch; }
