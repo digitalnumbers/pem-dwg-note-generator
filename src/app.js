@@ -1,5 +1,5 @@
-import { APP_VERSION, THREADS, MATERIALS, HW_MAT_LABEL, DEFAULT_STATE, parseCSV, compute, encodeState, decodeState, stdThicknesses, stdName, dec } from './logic.js?v=1.7.2';
-import { drawSection, VB_W } from './drawing.js?v=1.7.2';
+import { APP_VERSION, THREADS, MATERIALS, HW_MAT_LABEL, DEFAULT_STATE, parseCSV, compute, encodeState, decodeState, stdThicknesses, stdName, dec } from './logic.js?v=1.7.3';
+import { drawSection, VB_W } from './drawing.js?v=1.7.3';
 
 const $ = id => document.getElementById(id);
 const form = $('form');
@@ -88,11 +88,13 @@ function fillSelects(o) {
   // length
   const len = $('len');
   const autoChoice = o.choices.find(c => c.value === o.autoLen);
-  const autoLabel = state.type === 'insert' ? 'longest that fits' : state.type === 'nut' ? 'matches thickness' : 'shortest that clears 2T + washer + nut';
+  const autoLabel = state.type === 'insert' ? 'longest that fits' : state.type === 'nut' ? 'matches thickness' : 'suggested 2T + washer + nut';
   len.innerHTML = `<option value="auto">Auto, ${autoLabel}${autoChoice ? ': ' + autoChoice.label.split('  ')[0] : ' (none fits)'}</option>` +
-    o.choices.map(c => `<option value="${c.value}">${c.label}${c.fits ? '' : '  · does not fit'}</option>`).join('');
+    o.choices.map(c => `<option value="${c.value}">${c.label}${c.fits || /does not clear/.test(c.label) ? '' : '  · does not fit'}</option>`).join('');
   len.value = o.choices.some(c => c.value === state.len) ? state.len : 'auto';
-  $('len-hint').textContent = o.choices.length ? `${o.choices.filter(c => c.fits).length} of ${o.choices.length} confirmed lengths fit ${state.thk || '?'} in.` : '';
+  $('len-hint').textContent = !o.choices.length ? '' : state.type === 'stud'
+    ? `${o.choices.filter(c => c.fits).length} of ${o.choices.length} confirmed lengths clear ${state.thk || '?'} in; ${o.choices.filter(c => c.suggested).length} meet the suggested length.`
+    : `${o.choices.filter(c => c.fits).length} of ${o.choices.length} confirmed lengths fit ${state.thk || '?'} in.`;
   const m = data.materials.find(r => r.material === state.material);
   fillThkStd(m, o);
   $('mat-hint').textContent = m ? [m.hardness_HB && `${m.hardness_HB} HB`, /^\d/.test(m.hardness_HRB) && m.hardness_HRB.replace(/^(\d+)\s*(.*)$/, (_, n, r) => `${n} HRB${r ? ' ' + r : ''}`)].filter(Boolean).join(' / ') + ` (${m.hardness_basis})` : '';

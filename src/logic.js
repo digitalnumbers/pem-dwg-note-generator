@@ -1,7 +1,7 @@
 // Pure note/validation logic. No DOM access, so it runs in the browser and in Node tests.
 // Rule: every value printed in a note comes straight from a CSV row; nothing is computed into the note.
 
-export const APP_VERSION = "1.7.2";
+export const APP_VERSION = "1.7.3";
 export const THREADS = ['4-40', '8-32', '10-32', '1/4-20'];
 export const MATERIALS = ['5052-H32', '6061-T6', 'A304 (annealed)', 'A1008 CS Type B'];
 
@@ -147,7 +147,7 @@ export function stdSuggest(mat, ok, exact, largest = false, extra = {}) {
 }
 
 export const DEFAULT_STATE = {
-  type: 'insert', material: '6061-T6', thk: '0.250', hole: 'thru', tap: 'plug',
+  type: 'insert', material: '5052-H32', thk: '0.250', hole: 'thru', tap: 'plug',
   thread: '10-32', qty: '4', len: 'auto', side: 'near', hwmat: 'auto',
   pnmode: 'current',
 };
@@ -427,7 +427,7 @@ function computeStud(s, data, mat, T, validT, q, sideWord, out) {
   const pick = pickHwMat(s, mat, 'm63540', avail);
   out.hwmatChosen = pick.key; out.hwmatAvail = avail;
   const rows = all.filter(r => hwMatKey(r.material) === pick.key).sort((a, b) => num(a.length_L) - num(b.length_L));
-  // Auto length rule (v1.5): L (from the flush head face) must clear 2X the sheet thickness (sheet plus a mating
+  // Suggested length (v1.5, advisory since v1.7): L (from the flush head face) covers 2X the sheet thickness (sheet plus a mating
   // part of the same thickness) + the mil-spec flat washer + the mil-spec self-locking nut for that thread.
   // Washer and nut use their spec maximum thickness/height from hardware_stud_stack.csv.
   const stk = (data.stack || []).find(r => r.thread === s.thread) || null;
@@ -435,11 +435,15 @@ function computeStud(s, data, mat, T, validT, q, sideWord, out) {
   const reqL = validT ? 2 * T + stackAdd : NaN;
   out.studStack = stk ? { washer: stk.washer_pn, washerMax: stk.washer_thk_max, nut: stk.nut_pn, nutMax: stk.nut_height_max, reqL } : null;
   const protrudes = r => validT && num(r.length_L) > T;
-  const clears = r => validT && (stk ? num(r.length_L) >= reqL - 1e-9 : protrudes(r));
-  out.choices = rows.map(r => ({ value: r.length_L, label: `L ${r.length_L}${validT && stk ? `  (${num(r.length_L) >= reqL - 1e-9 ? 'clears by' : 'short by'} ${dec(Math.abs(num(r.length_L) - reqL).toFixed(3))})` : validT ? `  (protrudes ${dec((num(r.length_L) - T).toFixed(3))})` : ''}`, fits: clears(r) }));
-  const firstFit = rows.find(clears);
-  let row = s.len === 'auto' ? (firstFit || rows[rows.length - 1]) : (rows.find(r => r.length_L === s.len) || firstFit || rows[0]);
-  out.row = row; out.autoLen = firstFit ? firstFit.length_L : null;
+  // v1.7: the 2T + washer + nut length is only a suggestion. A chosen length shorter than the suggestion is
+  // accepted without a warning; only a stud that does not clear (protrude past) the substrate is flagged.
+  const meetsSug = r => validT && (stk ? num(r.length_L) >= reqL - 1e-9 : protrudes(r));
+  out.choices = rows.map(r => ({ value: r.length_L, label: `L ${r.length_L}${!validT ? '' : !protrudes(r) ? '  (does not clear sheet)' : stk ? `  (${meetsSug(r) ? 'meets suggested' : 'below suggested by ' + dec((reqL - num(r.length_L)).toFixed(3))})` : `  (protrudes ${dec((num(r.length_L) - T).toFixed(3))})`}`, fits: protrudes(r), suggested: meetsSug(r) }));
+  const firstFit = rows.find(meetsSug);
+  const longestClear = [...rows].reverse().find(protrudes);
+  const autoRow = firstFit || longestClear || rows[rows.length - 1];
+  let row = s.len === 'auto' ? autoRow : (rows.find(r => r.length_L === s.len) || autoRow);
+  out.row = row; out.autoLen = (firstFit || longestClear) ? autoRow.length_L : null;
   out.hwmatReason = pick.ok
     ? `${pick.auto ? 'Auto: ' : ''}${pick.key === 'pem' ? hwName('pem', 'stud') + ', commercial only' : HW_MAT_LABEL[pick.key]} (rated to ${row.max_sheet_hardness_HRB} HRB; ${s.material} ${hardnessText(mat)})`
     : pick.caution
@@ -453,14 +457,8 @@ function computeStud(s, data, mat, T, validT, q, sideWord, out) {
     out.warnings.push({ text: `${fmtThk(T)} in is above the PEM sheet thickness range (${row.min_sheet_thk}-${row.sheet_thk_max}) for ${s.thread} FH4 studs; PEM notes performance may be reduced in thicker sheets.`, actions: [stdSuggest(mat, t => t >= num(row.min_sheet_thk) && t <= num(row.sheet_thk_max), '0' + row.sheet_thk_max, true)] });
   }
   if (validT && !protrudes(row)) {
-    out.warnings.push({ text: `Stud length L ${row.length_L} does not protrude past ${fmtThk(T)} in sheet (L is measured from the flush head face).`,
-      actions: firstFit ? [{ label: `Use L ${firstFit.length_L}`, patch: { len: firstFit.length_L } }] : [] });
-  } else if (validT && stk && !clears(row)) {
-    const stackTxt = `2 X ${fmtThk(T)} sheet + ${stk.washer_pn} washer ${dec(stk.washer_thk_max)} max + ${stk.nut_pn} nut ${dec(stk.nut_height_max)} max = ${dec(reqL.toFixed(3))} in`;
-    out.warnings.push({ text: firstFit
-        ? `Stud length L ${row.length_L} is short of the required clearance: ${stackTxt}.`
-        : `No confirmed ${hwName(pick.key, 'stud')} ${s.thread} stud length clears ${stackTxt}. Longest available is L ${rows[rows.length - 1].length_L}.`,
-      actions: firstFit && s.len !== 'auto' ? [{ label: `Use L ${firstFit.length_L} (shortest that clears)`, patch: { len: firstFit.length_L } }] : firstFit ? [] : [{ label: 'Use threaded insert instead', patch: { type: 'insert', len: 'auto', hwmat: 'auto' } }] });
+    out.warnings.push({ text: `Stud length L ${row.length_L} does not clear the ${fmtThk(T)} in sheet (L is measured from the flush head face, so it must be longer than the sheet thickness).`,
+      actions: autoRow && protrudes(autoRow) ? [{ label: `Use L ${autoRow.length_L}`, patch: { len: autoRow.length_L } }] : [{ label: 'Use threaded insert instead', patch: { type: 'insert', len: 'auto', hwmat: 'auto' } }] });
   }
   const { pn, cage } = pnFor(row, s);
   const hs = holeSize(row.hole_dia_in_sheet, row.hole_tol);
@@ -469,7 +467,7 @@ function computeStud(s, data, mat, T, validT, q, sideWord, out) {
   out.commercial = { pn: row.commercial_pem_pn, basis: row.commercial_pem_basis, hidden: false, isNotePN: row.commercial_only === 'Y' };
   const edge = row.min_edge_dist_spec || '';
   const edgeSrc = row.commercial_only === 'Y' ? 'PEM' : 'spec';
-  if (stk && validT) out.info.push(`Auto length clears 2 X sheet (${fmtThk(T)} + ${fmtThk(T)} mating part) + ${stk.washer_pn} washer (${dec(stk.washer_thk_max)} max) + ${stk.nut_pn} lock nut (${dec(stk.nut_height_max)} max) = ${dec(reqL.toFixed(3))} in. L ${row.length_L} ${num(row.length_L) >= reqL - 1e-9 ? 'clears by ' + dec((num(row.length_L) - reqL).toFixed(3)) : 'is short by ' + dec((reqL - num(row.length_L)).toFixed(3))} in.`);
+  if (stk && validT) out.info.push(`Suggested length (not required): 2 X sheet (${fmtThk(T)} + ${fmtThk(T)} mating part) + ${stk.washer_pn} washer (${dec(stk.washer_thk_max)} max) + ${stk.nut_pn} lock nut (${dec(stk.nut_height_max)} max) = ${dec(reqL.toFixed(3))} in. L ${row.length_L} ${num(row.length_L) >= reqL - 1e-9 ? 'meets it by ' + dec((num(row.length_L) - reqL).toFixed(3)) + ' in' : 'is ' + dec((reqL - num(row.length_L)).toFixed(3)) + ' in below it; confirm thread engagement for your stack'}${!firstFit && s.len === 'auto' ? ' (no confirmed length meets the suggestion; longest available used)' : ''}.`);
   if (row.commercial_only === 'Y') {
     out.info.push('Install with the PEM special anvil with a raised ring. FH4 is 400-series stainless: magnetic, and not for appreciable corrosive exposure or service above 300\u00b0F (PEM).');
     if (row.max_hole_in_attached_parts) out.info.push(`Max clearance hole in attached parts: ${row.max_hole_in_attached_parts}.`);

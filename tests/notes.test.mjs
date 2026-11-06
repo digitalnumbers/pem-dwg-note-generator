@@ -4,8 +4,10 @@ import { parseCSV, compute } from '../src/logic.js';
 const rd = f => parseCSV(readFileSync(new URL('../data/' + f, import.meta.url), 'utf8'));
 const data = { inserts: rd('hardware_ms21208.csv'), nuts: [...rd('hardware_m45938_1.csv'), ...rd('hardware_pem_sp.csv')], studs: [...rd('hardware_m63540_1.csv'), ...rd('hardware_pem_fh4.csv')], materials: rd('materials.csv'), stack: rd('hardware_stud_stack.csv'), studPerf: rd('pem_fh_performance.csv'), clinchDrills: rd('clinch_drills.csv') };
 let fail = 0;
+// Golden notes were written against 6061-T6; the app default is 5052-H32 since v1.7.3, so pin 6061 unless a test sets material.
+const BASE = { material: '6061-T6' };
 function check(name, state, expected, extra) {
-  const o = compute(state, data);
+  const o = compute({ ...BASE, ...state }, data);
   const ok = o.noteText === expected.join('\n') && (!extra || extra(o));
   if (!ok) { fail++; console.log('FAIL', name, '\n' + o.noteText, '\n--- warnings:', o.warnings.map(w => w.text)); } else console.log('ok  ', name);
 }
@@ -63,7 +65,7 @@ check('5052 stud and nut never offer carbon or aluminum', { type: 'stud', materi
   ['4X DRILL #12 (\u00d8.189) THRU', 'INSTALL SELF-CLINCHING STUD', 'PN: M63540/1-38C', 'CAGE: 80205', 'NEAR SIDE FLUSH'], o => o.hwmatAvail.join() === 'cres,pem');
 // Standard stock thickness snapping (materials.csv std_thk_in)
 function checkSnap(name, state, label, thk, std) {
-  const o = compute(state, data);
+  const o = compute({ ...BASE, ...state }, data);
   const a = o.warnings.flatMap(w => w.actions).find(x => x.patch.thk);
   const ok = a && a.label === label && a.patch.thk === thk && (!std || std(o.thkStd));
   if (!ok) { fail++; console.log('FAIL', name, a, o.thkStd); } else console.log('ok  ', name);
@@ -105,15 +107,20 @@ import { round3, dec, cap3, holeSize, fmtThk } from '../src/logic.js';
     }
   if (worst) { fail++; console.log('FAIL max 3 places / csk angle:', worst); } else console.log('ok   every note, info, warning and detail is at most 3 places; every insert note has the csk angle');
 }
-if (fail) { console.log(fail + ' failed'); process.exit(1); } else console.log('all passed');
 
 // v1.5 stud auto length: shortest L >= 2T + NAS1149 washer max + lock nut max
-{ const o = compute({ type: 'stud', thk: '0.090' }, data); const ok = o.row.length_L === '.625' && Math.abs(o.studStack.reqL - .530) < 1e-9;
+{ const o = compute({ ...BASE, type: 'stud', thk: '0.090' }, data); const ok = o.row.length_L === '.625' && Math.abs(o.studStack.reqL - .530) < 1e-9;
   if (!ok) { fail++; console.log('FAIL stud auto length 10-32 .090 -> L .625 (req .530)', o.row.length_L); } else console.log('ok   stud auto length 10-32 .090 -> L .625 (req .530)'); }
-{ const o = compute({ type: 'stud', thk: '0.090', len: '.375' }, data); const ok = o.nonCompliant && o.warnings.some(w => w.text.includes('short of the required clearance') && w.actions.some(a => a.patch.len === '.625'));
-  if (!ok) { fail++; console.log('FAIL manual short stud warns'); } else console.log('ok   manual short stud warns with shortest-that-clears action'); }
+// v1.7.3: the 2T + washer + nut length is a suggestion only. Shorter studs that clear the sheet are compliant;
+// a stud that does not protrude past the sheet still warns.
+{ const o = compute({ ...BASE, type: 'stud', thk: '0.090', len: '.375' }, data); const ok = !o.nonCompliant && o.row.length_L === '.375' && o.info.some(t => t.includes('below it'));
+  if (!ok) { fail++; console.log('FAIL manual stud shorter than suggestion is accepted', o.warnings.map(w => w.text)); } else console.log('ok   manual stud shorter than suggestion is accepted (info only)'); }
+{ const o = compute({ type: 'stud', material: 'A1008 CS Type B', thread: '8-32', thk: '0.500', len: '.500' }, data); const ok = o.nonCompliant && o.warnings.some(w => w.text.includes('does not clear') && w.actions.some(a => a.patch.len));
+  if (!ok) { fail++; console.log('FAIL stud that does not clear the sheet warns', o.warnings.map(w => w.text)); } else console.log('ok   stud that does not clear the sheet warns'); }
+{ const o = compute({}, data); const ok = o.state.material === '5052-H32' && !o.nonCompliant;
+  if (!ok) { fail++; console.log('FAIL app default material 5052-H32', o.state.material); } else console.log('ok   app default material is 5052-H32'); }
 { const perf = st => compute(st, data).details.find(d => d[0].startsWith('Push-out / torque-out / pull-thru'));
   const a = perf({ type: 'stud', material: '6061-T6', thread: '10-32', thk: '0.090' }), b = perf({ type: 'stud', material: 'A1008 CS Type B', thread: '1/4-20', thk: '0.090' }), c = perf({ type: 'stud', material: 'A304 (annealed)', thread: '10-32', thk: '0.060' });
   const ok = a && a[0].includes('FHS') && a[0].includes('Aluminum') && a[1] === '270 lb / 30 in-lb / 1220 lb' && b && b[0].includes('Steel') && b[1] === '575 lb / 100 in-lb / 2550 lb' && c && c[1] === '800 lb / 95 in-lb / 2250 lb';
   if (!ok) { fail++; console.log('FAIL stud PEM performance row', a, b, c); } else console.log('ok   stud spec values show PEM push-out / torque-out / pull-thru'); }
-if (fail) process.exitCode = 1;
+if (fail) { console.log(fail + ' failed'); process.exitCode = 1; } else console.log('all passed');
