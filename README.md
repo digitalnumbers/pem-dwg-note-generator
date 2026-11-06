@@ -20,7 +20,7 @@ Threads in v1: 4-40, 8-32, 10-32, 1/4-20. Substrates: 5052-H32, 6061-T6, A304 (a
 - Clinch hardware is CRES only. Carbon steel and aluminum rows stay in the CSVs as a spec record but the app never offers them.
 - Auto-select uses mil CRES whenever it is rated for the substrate. A304 exceeds the mil CRES limits, so the app uses PEM FH4 studs (rated to 92 HRB) and PEM SP nuts (rated to 90 HRB, with a warning to confirm sheet hardness). These print the PEM PN and CAGE 46384 and are tagged "Commercial PN, no mil equivalent".
 - Thickness suggestions snap to standard sheet and plate stock for the selected material (gauge values for A304 and A1008, decimal sheet and plate for aluminum), stored in `data/materials.csv` with sources. Non-standard entries show the nearest standard thicknesses.
-- For mil parts, the equivalent commercial PEM part number is shown grayed out for reference only and is never copied into the note.
+- For mil parts, the equivalent commercial PEM part number is shown grayed out for reference only and is never copied into the note. The reference PN itself is selectable (one click selects it) so it can be copy-pasted; Heli-Coil insert PNs are shown with UNCOATED appended.
 - Stud spec values include PEM push-out, torque-out and pull-thru averages (`data/pem_fh_performance.csv`; FH4 values from its own CSV). These are PEM averages for reference, not spec minimums.
 - The selection lives in the URL hash, so a link reproduces a note.
 

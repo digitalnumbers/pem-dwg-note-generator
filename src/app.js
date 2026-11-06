@@ -1,5 +1,5 @@
-import { APP_VERSION, THREADS, MATERIALS, HW_MAT_LABEL, DEFAULT_STATE, parseCSV, compute, encodeState, decodeState, stdThicknesses, stdName, dec } from './logic.js?v=1.7.0';
-import { drawSection, VB_W } from './drawing.js?v=1.7.0';
+import { APP_VERSION, THREADS, MATERIALS, HW_MAT_LABEL, DEFAULT_STATE, parseCSV, compute, encodeState, decodeState, stdThicknesses, stdName, dec } from './logic.js?v=1.7.1';
+import { drawSection, VB_W } from './drawing.js?v=1.7.1';
 
 const $ = id => document.getElementById(id);
 const form = $('form');
@@ -198,7 +198,7 @@ function update(pushHash = true) {
   note.classList.toggle('bad', o.nonCompliant);
   $('flag').hidden = !o.nonCompliant;
   $('conly').hidden = !o.commercialOnly;
-  // commercial reference (grayed, not selectable, never copied)
+  // commercial reference (grayed, PN selectable for copy-paste, never copied into the note)
   const c = $('commercial');
   if (!o.commercial || o.commercial.hidden) c.innerHTML = '';
   else if (o.commercial.isNotePN) c.innerHTML = `<span class="ref-k">Commercial PN (PEM)</span><span class="ref-v">${esc(o.commercial.pn)}</span>` +

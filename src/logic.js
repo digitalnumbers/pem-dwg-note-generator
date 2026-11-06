@@ -1,7 +1,7 @@
 // Pure note/validation logic. No DOM access, so it runs in the browser and in Node tests.
 // Rule: every value printed in a note comes straight from a CSV row; nothing is computed into the note.
 
-export const APP_VERSION = "1.7.0";
+export const APP_VERSION = "1.7.1";
 export const THREADS = ['4-40', '8-32', '10-32', '1/4-20'];
 export const MATERIALS = ['5052-H32', '6061-T6', 'A304 (annealed)', 'A1008 CS Type B'];
 
@@ -258,7 +258,7 @@ function computeInsert(s, data, mat, T, validT, q, sideWord, out) {
     out.prep.push(`${q}DRILL ${drill} THRU`, csk, `TAP ${row.tap} THRU`);
   }
   out.install.push('INSTALL THREADED INSERT', 'BREAK TANG', `PN: ${pn}`, `CAGE: ${cage}`, sideWord);
-  out.commercial = { pn: row.commercial_pem_pn, basis: row.commercial_pem_basis, hidden: false, brand: 'Heli-Coil' };
+  out.commercial = { pn: row.commercial_pem_pn ? `${row.commercial_pem_pn} UNCOATED` : '', basis: row.commercial_pem_basis, hidden: false, brand: 'Heli-Coil' };
   if (s.hole === 'blind' && validT) out.info.push(`MIN DEPTH is to full drill diameter. The 118\u00b0 point reaches about ${dec(tip(row).toFixed(3))} in, leaving about ${dec(Math.max(0, T - tip(row)).toFixed(3))} in of material below the point at minimum depth.`);
   const tg = THREAD_GEOM[s.thread];
   out.geom = {
